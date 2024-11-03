@@ -1,0 +1,830 @@
+--[[
+    ~ Talent without hard work is nothing ~
+    - Olivia Rodrigo <3
+    - Project 1 Million
+    - Dream Life Financial Freedom
+    - Future business man
+    - Dream Happy Family
+]]
+
+local intervalPlant = 190
+local intervalPunch = 200
+local intervalPlace = 190
+local intervalHarvest = 190
+
+local formula = {
+    {FirstItemSeedID = 55, SecondItemSeedID = 13, Result = 31, Count = 2650},
+    {FirstItemSeedID = 55, SecondItemSeedID = 13, Result = 31, Count = 450},
+    {FirstItemSeedID = 29, SecondItemSeedID = 105, Result = 163, Count = 2500},
+    {FirstItemSeedID = 31, SecondItemSeedID = 163, Result = 61, Count = 2650}
+}
+
+local dirtfarmList = read("dirtfarm.txt")
+local storageSeedList = read("storageSeed.txt")
+local storageProfitList = read("storageProfit.txt")
+
+----------------- Source Code -----------------
+local lastStage = 0
+local tileTable = {}
+local storageSeed
+local storageProfit
+local worldDirtfarm
+
+isNuked = false
+
+for i = math.floor(5 / 2),1,-1 do
+    i = i * -1
+    table.insert(tileTable,i)
+end
+
+for i = 0, math.ceil(5 / 2) - 1 do
+    table.insert(tileTable,i)
+end
+
+local function getQuotient(num, thread)
+    return math.ceil(num / thread)
+end
+
+local dirtfarms = {}
+local storageSeeds = {}
+local storageProfits = {}
+
+for line in dirtfarmList:gmatch("[^\r\n]+") do
+    table.insert(dirtfarms,line)
+end
+
+for i, line in pairs(dirtfarms) do
+    if i == getBot().index then
+        worldDirtfarm = line
+        break
+    end
+end
+
+for line in storageSeedList:gmatch("[^\r\n]+") do
+    table.insert(storageSeeds, line)
+end
+
+for i, line in pairs(storageSeeds) do
+    if getQuotient(i, 3) == getBot().index then
+        storageSeed = line
+        break
+    end
+end
+
+for line in storageProfitList:gmatch("[^\r\n]+") do
+    table.insert(storageProfits, line)
+end
+
+for i, line in pairs(storageProfits) do
+    if getQuotient(i, 3) == getBot().index then
+        storageProfit = line
+        break
+    end
+end
+
+if getBot().custom_status:find("stage") then
+    lastStage = tonumber(getBot().custom_status:match("stage (%d+)"))
+end
+
+if not getBot().custom_status:find("stage") then
+    getBot().custom_status = "stage 1"
+end
+
+local function canFindPath(x,y)
+    return (x == getBot().x and y == getBot().y and true or #getBot():getPath(x,y) > 0 and true or false)
+end
+
+local function getItemCount(itemID)
+    return getBot():getInventory():getItemCount(itemID)
+end
+
+local function seperateString(str)
+    local world, id = str:match("([^|]+)|([^|]+)")
+    return {world = world, id = id}
+end
+
+local function waitForCondition(interval, max, condition)
+    local sleepCounter = 0
+    while condition() and sleepCounter < max do
+        listenEvents(1)
+        sleepCounter = sleepCounter + interval
+    end
+    return sleepCounter
+end
+
+local function reconnect(world, id, x, y)
+    if getBot().status ~= BotStatus.online then
+        sleep(60000 * 4)
+        while getBot().status ~= BotStatus.online do
+            sleep(15000)
+            if getBot().status == BotStatus.account_banned then
+                getBot().auto_reconnect = false
+                getBot():stopScript()
+            end
+        end
+        if world then
+            local enterAttempt = 0
+            while not getBot():isInWorld(string.upper(world)) do
+                getBot():warp(world)
+                waitForCondition(500, 35000, function() return not getBot():isInWorld(string.upper(world)) and getBot().status == 1 end)
+                if getBot().status ~= 1 then
+                    return reconnect(world,id,x,y)
+                end
+                if not getBot():isInWorld(string.upper(world)) then
+                    enterAttempt = enterAttempt + 1
+                    if enterAttempt >= 4 then
+                        waitForCondition(500, 400000, function() return not getBot():isInWorld(string.upper(world)) and getBot().status == 1 end)                
+                        return reconnect(world,id,x,y)
+                    end
+                else    
+                    sleep(5000)
+                end
+            end
+        end
+        local attempt = 0
+        if world and id ~= "" and getTile(getBot().x,getBot().y).fg == 6 then
+            while getTile(getBot().x,getBot().y).fg == 6 do
+                getBot():warp(world,id)
+                sleep(3000)
+                attempt = attempt + 1
+                if getBot().status ~= 1 then
+                    return reconnect(world,id,x,y)
+                end
+                if attempt >= 4 then
+                    sleep(60000 * 8)
+                    return reconnect(world,id,x,y)
+                end
+            end
+        end
+        getBot().move_range = 5
+        getBot().move_interval = 300
+        if x and y then
+            while not getBot():isInTile(x,y) do
+                if getBot().status == 1 then
+                    getBot():findPath(x,y)
+                    sleep(500)
+                else
+                    return reconnect(world,id,x,y)
+                end
+            end
+        end
+    end
+end
+
+local function enterWorld(world,id)
+    if not getBot():isInWorld(string.upper(world)) then
+        isNuked = false
+        local enterAttempt = 0
+        addEvent(Event.variantlist, function(var, netid)
+            if var:get(0):getString() == "OnConsoleMessage" then
+                if var:get(1):getString():find("That world is inaccessible.") or var:get(1):getString():find("lower than level") then
+                    isNuked = true
+                    unlistenEvents()
+                end
+            end
+        end)
+        while not getBot():isInWorld(string.upper(world)) do
+            getBot():warp(world)
+            waitForCondition(500, 35000, function() return not (getBot():isInWorld(string.upper(world)) and getBot().status == 1) or getBot().status == BotStatus.changing_subserver end)
+            reconnect(world,"")
+            listenEvents(4)
+            if not getBot():isInWorld(string.upper(world)) then
+                if isNuked == true then return end
+                enterAttempt = enterAttempt + 1
+                if enterAttempt >= 3 then
+                    waitForCondition(500, 400000, function() return not getBot():isInWorld(string.upper(world)) and getBot().status == 1 end)                
+                    reconnect(world,"")
+                    enterAttempt = 0
+                end
+            else
+                sleep(2000)
+            end
+        end
+        removeEvents()
+    end
+    local attempt = 0
+    if id ~= "" and getTile(getBot().x,getBot().y).fg == 6 then
+        while getTile(getBot().x,getBot().y).fg == 6 do
+            getBot():warp(world,id)
+            sleep(3000)
+            reconnect(world,id)
+            attempt = attempt + 1
+            if attempt >= 4 then
+                sleep(60000 * 8)
+                reconnect(world,id)
+                attempt = 0
+            end
+        end
+    end
+end
+
+local function checkTile(x,y,num)
+    local count = 0
+    for _,object in pairs(getObjects()) do
+        if math.floor((object.x + 8) / 32) == x and math.floor((object.y + 8) / 32) == y then
+            count = count + object.count
+        end
+    end
+    if count <= (3800 - num) then
+        return true
+    end
+    return false
+end
+
+local function depositSeed(storage, item)
+    while getItemCount(item) ~= 0 do
+        local worldSeperate = seperateString(storage)
+        enterWorld(worldSeperate.world,worldSeperate.id)
+        sleep(200)
+        if isNuked == false then
+            local tileposx, tileposy = getBot().x, getBot().y
+            for tiley = tileposy, 0, -1 do
+                for tilex = tileposx, (tileposx + 15), 1 do
+                    if getInfo(getTile(tilex,tiley).fg).collision_type == 0 and canFindPath(tilex-1,tiley) then
+                        local tileDropable = checkTile(tilex,tiley,getItemCount(item))
+                        if tileDropable == true then
+                            while not getBot():isInTile(tilex-1,tiley) do
+                                getBot():findPath(tilex-1,tiley)
+                                sleep(500)
+                                getBot():setDirection(false)
+                                sleep(500)
+                            end
+                            while getItemCount(item) > 0 do
+                                getBot():drop(item,getItemCount(item))
+                                sleep(3000)
+                            end
+                        end
+                    end
+                    if getItemCount(item) == 0 then
+                        break
+                    end
+                end
+                if getItemCount(item) == 0 then
+                    break
+                end
+            end
+        else
+            getBot().custom_status = "storage seed is nuked"
+            getBot().auto_reconnect = false
+            getBot():disconnect()
+            getBot():stopScript()
+        end
+    end
+end
+
+function takeSpecificItem(world,id,items,count,name)
+    local function availableObject(itemID)
+        local count = 0
+        for _,object in pairs(getBot():getWorld():getObjects()) do
+            if object.id == itemID then
+                if canFindPath(math.floor((object.x + 7) / 32),math.floor(object.y / 32)) == true then
+                    count = count + object.count
+                end
+            end
+        end
+        return count
+    end
+    enterWorld(world,id)
+    if isNuked == true then
+        getBot().custom_status = "Storage seed world is nuked."
+        getBot().auto_reconnect = false
+        getBot():disconnect()
+        getBot():stopScript()
+    end
+    for _,itemID in pairs(items) do
+        if availableObject(itemID) >= count then
+            while getBot():getInventory():getItemCount(itemID) < count do
+                for _,object in pairs(getBot():getWorld():getObjects()) do
+                    if object.id == itemID then
+                        getBot():findPath(math.floor((object.x + 7) / 32),math.floor(object.y / 32))
+                        sleep(500)
+                        reconnect(world,id,math.floor((object.x + 7) / 32),math.floor(object.y / 32))
+                        getBot():setDirection(false)
+                        sleep(200)
+                        reconnect(world,id,math.floor((object.x + 7) / 32),math.floor(object.y / 32))
+                        getBot():collectObject(object.oid, 3)
+                        sleep(500)
+                        reconnect(world,id,math.floor((object.x + 7) / 32),math.floor(object.y / 32))
+                        if getBot():getInventory():getItemCount(itemID) >= count then
+                            if getBot():getInventory():getItemCount(itemID) > count then
+                                while getBot():getInventory():getItemCount(itemID) > count do
+                                    getBot():drop(itemID,getBot():getInventory():getItemCount(itemID)-count)
+                                    sleep(3000)
+                                    reconnect(world,id,math.floor((object.x + 7) / 32),math.floor(object.y / 32))
+                                end
+                            end
+                            break
+                        end
+                    end
+                end
+            end
+        else
+            getBot().custom_status = "Item: " .. itemID .. " is not enough"
+            getBot().auto_reconnect = false
+            getBot():disconnect()
+            getBot():stopScript()
+        end
+    end
+end
+
+local function isPlantable(x,y)
+    local tile = getTile(x,y + 1)
+    if not tile.fg then return false end
+    local collision = getInfo(tile.fg).collision_type
+    return (collision == 1 or collision == 2)
+end
+
+local function checkEmpty(x,y)
+    for i = 1, 5 do
+        if getBot():getWorld():getTile((x-3)+i,y).fg == 0 and isPlantable((x-3)+i,y) and getBot():getWorld():hasAccess((x-3)+i,y) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+local function checkSpecific(itemID,item1,x,y)
+    for i = 1, 5 do
+        if (getTile((x-3)+i,y).fg == 0 or getTile((x-3)+i,y).fg == item1) and getTile((x-3)+i,y).fg ~= itemID and isPlantable((x-3)+i,y) and getBot():getWorld():hasAccess((x-3)+i,y) > 0 then
+            return false
+        end
+    end
+    return true
+end
+
+local function counterSpecific(itemID,x,y)
+    for i = 1, 5 do
+        if getBot():getWorld():getTile((x-3)+i,y).fg == itemID and isPlantable((x-3)+i,y) and getBot():getWorld():hasAccess((x-3)+i,y) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+local function checkSpecificReady(itemID,x,y)
+    for i = 1, 5 do
+        if getBot():getWorld():getTile((x-3)+i,y).fg == itemID and getBot():getWorld():getTile((x-3)+i,y):canHarvest() then
+            return true
+        end
+    end
+    return false
+end
+
+local function splice(world,id,item1,item2,result,count)
+    getBot().auto_collect = true
+    for tiley = 1, 53, 2 do
+        for tilex = 3, 98, 5 do
+             if checkEmpty(tilex,tiley) and (getBot():getWorld().growscan:getTiles()[result] or 0) < count then
+                if canFindPath(tilex,tiley) then
+                    if getItemCount(item1) < 15 or getItemCount(item2) < 15 then
+                        getBot().auto_collect = false
+                        local worldSeperate = seperateString(storageSeed)
+                        takeSpecificItem(worldSeperate.world,worldSeperate.id,{item1,item2},count - (getBot():getWorld().growscan:getTiles()[result] or 0) > 200	and 200 or count - (getBot():getWorld().growscan:getTiles()[result] or 0)+20)
+                        sleep(300)
+                        enterWorld(world,id)
+                        sleep(300)
+                        if isNuked == true then
+                            getBot().custom_status = "Dirtfarm is nuked"
+                            getBot().auto_reconnect = false
+                            getBot():disconnect()
+                            getBot():stopScript()
+                        end
+                        getBot().auto_collect = true
+                    end
+                    local countPath = #getBot():getPath(tilex,tiley)
+                    if countPath <= 5 then
+                        getBot().move_range = 6
+                        getBot().move_interval = 110
+                    else
+                        getBot().move_range = 6
+                        getBot().move_interval = 330
+                    end
+                    getBot():findPath(tilex,tiley)
+                    reconnect(world,id,tilex,tiley)
+                    while not checkSpecific(result,item1,tilex,tiley) do
+                        while checkEmpty(tilex,tiley) do
+                            for tiles = -2, 2, 1 do
+                                if getTile(tilex+tiles,tiley).fg == 0 and isPlantable(tilex+tiles,tiley) and getBot():getWorld():hasAccess(tilex+tiles,tiley) > 0 then
+                                    getBot():place(getBot().x + tiles,getBot().y,item1)
+                                    sleep(intervalPlant)
+                                    reconnect(world,id,tilex,tiley)
+                                end
+                            end
+                        end
+                        while not checkSpecific(result,item1,tilex,tiley) and not checkEmpty(tilex,tiley) and not checkSpecificReady(item1,tilex,tiley) do
+                            for tiles = -2, 2, 1 do
+                                if getTile(tilex+tiles,tiley).fg ~= result and getTile(tilex+tiles,tiley).fg == item1 and isPlantable(tilex+tiles,tiley) and getBot():getWorld():hasAccess(tilex+tiles,tiley) > 0 and not getTile(tilex+tiles,tiley):canHarvest() then
+                                    getBot():place(getBot().x + tiles,getBot().y,item2)
+                                    sleep(intervalPlant)
+                                    reconnect(world,id,tilex,tiley)
+                                end
+                            end
+                        end
+                        while checkSpecificReady(item1,tilex,tiley) do
+                            while counterSpecific(item1,tilex,tiley) do
+                                for tiles = -2, 2, 1 do
+                                    if getTile(tilex+tiles,tiley).fg == item1 and getTile(tilex+tiles,tiley).fg ~= 0 then
+                                        getBot():hit(tilex+tiles,tiley)
+                                        sleep(intervalPlant)
+                                        reconnect(world,id,tilex,tiley)
+                                    end
+                                end
+                            end
+                        end
+                        sleep(10)
+                    end
+                else
+                    for tiles = -2, 2, 1 do
+                        if getTile(tilex + tiles,tiley).fg == 0 then
+                            if canFindPath(tilex + tiles,tiley) and isPlantable(tilex+tiles,tiley) and getBot():getWorld():hasAccess(tilex+tiles,tiley) > 0 then
+                                if getItemCount(item1) < 15 or getItemCount(item2) < 15 then
+                                    local worldSeperate = seperateString(storageSeed)
+                                    getBot().auto_collect = false
+                                    takeSpecificItem(worldSeperate.world,worldSeperate.id,{item1,item2},count - (getBot():getWorld().growscan:getTiles()[result] or 0) > 200	and 200 or count - (getBot():getWorld().growscan:getTiles()[result] or 0)+20)
+                        	          sleep(300)
+                                    enterWorld(world,id)
+                                    sleep(300)
+                                    if isNuked == true then
+                                        getBot().custom_status = "Dirtfarm is nuked"
+                                        getBot().auto_reconnect = false
+                                        getBot():disconnect()
+                                        getBot():stopScript()
+                                    end
+                                    getBot().auto_collect = true
+                                end
+                                local countPath = #getBot():getPath(tilex + tiles,tiley)
+                                if countPath <= 5 then
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 110
+                                else
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 330
+                                end
+                                getBot():findPath(tilex + tiles,tiley)
+                                reconnect(world,id,tilex,tiley)
+                                while getTile(tilex+tiles,tiley).fg ~= result do
+                                    while getTile(tilex+tiles,tiley).fg == 0 do
+                                        getBot():place(getBot().x,getBot().y,item1)
+                                        sleep(intervalPlant)
+                                        reconnect(world,id,tilex,tiley)
+                                    end
+                                    while getTile(tilex+tiles,tiley).fg ~= 0 and getTile(tilex+tiles,tiley).fg ~= result and not getTile(tilex+tiles,tiley):canHarvest() do
+                                        getBot():place(getBot().x,getBot().y,item2)
+                                        sleep(intervalPlant)
+                                        reconnect(world,id,tilex,tiley)
+                                    end
+                                    while getTile(tilex+tiles,tiley).fg == item1 and getTile(tilex+tiles,tiley):canHarvest() do
+                                        getBot():hit(getBot().x,getBot().y)
+                                        sleep(intervalPlant)
+                                        reconnect(world,id,tilex + tiles,tiley)
+                                    end
+                                    sleep(10)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    getBot().auto_collect = false
+end
+
+local function tilePunch(item, x, y, extra)
+    for _, num in pairs(tileTable) do
+        if (y-3)+num <= 99 and getTile(x + extra, y + num).fg == item and (getTile(x + extra, y + num).fg ~= 0 or getTile(x + extra, y + num).bg ~= 0) then
+            return true
+        end
+    end
+    return false
+end
+
+local function tilePlace(item,x, y, extra)
+    for _, num in pairs(tileTable) do
+        if (y-3)+num <= 99 and getTile(x + extra, y + num).fg == 0 and getTile(x + extra, y + num).bg == 0 and getItemCount(item) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+local function checkHarvest(item,x,y)
+    for i = 1, 5 do
+        if (x-3)+i <= 99 and getTile((x-3)+i,y).fg == item and getTile((x-3)+i,y):canHarvest() then
+            return true
+        end
+    end
+    return false
+end
+
+local function harvest(world, id, item, index)
+    getBot().auto_collect = true
+    if not isNuked then
+        for tiley = 1, 53, 2 do
+            for tilex = 3, 98, 5 do
+                if checkHarvest(item,tilex, tiley) then
+                    if canFindPath(tilex, tiley) then
+                        local countPath = #getBot():getPath(tilex,tiley)
+                        if countPath <= 5 then
+                            getBot().move_range = 6
+                            getBot().move_interval = 110
+                        else
+                            getBot().move_range = 6
+                            getBot().move_interval = 330
+                        end
+                        getBot():findPath(tilex, tiley)
+                        reconnect(world, "", tilex, tiley)
+                        while checkHarvest(item,tilex, tiley) == true do
+                            for i = -2, 2, 1 do
+                                if getTile(tilex + i, tiley).fg == item and (tilex + i) <= 99 then
+                                    if getBot().x == tilex and getBot().y == tiley and getBot().status == 1 then
+                                        getBot():hit(tilex + i, tiley)
+                                        sleep(intervalHarvest)
+                                    else
+                                        reconnect(world, id, tilex, tiley)
+                                        if getTile(getBot().x,getBot().y).fg == 6 then
+                                            enterWorld(world, id)
+                                            sleep(500)
+                                        end
+                                        getBot():findPath(tilex, tiley)
+                                    end
+                                    reconnect(world, id, tilex, tiley)
+                                end
+                            end
+                        end
+                        if getItemCount(item - 1) >= 180 then
+                            local tilex = (tilex < 50 and 1 or 98)
+                            local extra = (tilex < 50 and -1 or 1)
+                            local tiley = (tiley == 1 and tiley+2 or tiley == 53 and tiley-2 or tiley)
+                            while getBot().x ~= tilex or getBot().y ~= tiley do
+                                getBot().move_range = 5
+                                getBot().move_interval = 350
+                                getBot():findPath(tilex,tiley)
+                                sleep(100)
+                            end
+                            while getItemCount(item-1) >= 5 and getItemCount(item) < 185 do
+                                while tilePlace(item-1,tilex, tiley,extra) do
+                                    for _, i in ipairs(tileTable) do
+                                        if getTile(tilex+extra, tiley + i).fg == 0 and getTile(tilex+extra, tiley + i).bg == 0 and getItemCount(item-1) > 0 then
+                                            if getBot().x == tilex and getBot().y == tiley then
+                                                getBot():place(getBot().x+extra, getBot().y + i, item-1)
+                                                sleep(intervalPlace)
+                                            else
+                                                getBot():findPath(tilex, tiley)
+                                            end
+                                            reconnect(world, id, tilex, tiley)
+                                        end
+                                    end
+                                end
+                                while tilePunch(item-1,tilex, tiley,extra) do
+                                    for _, i in ipairs(tileTable) do
+                                        if getTile(tilex+extra, tiley + i).fg == item-1 or getTile(tilex+extra, tiley + i).bg ~= 0 then
+                                            if getBot().x == tilex and getBot().y == tiley then
+                                                getBot():hit(getBot().x+extra, getBot().y + i)
+                                                sleep(intervalPunch)
+                                            else
+                                                getBot():findPath(tilex, tiley)
+                                            end
+                                            reconnect(world, id, tilex, tiley)
+                                        end
+                                    end
+                                end
+                            end
+                            if getItemCount(item) >= 185 then
+                                getBot().auto_collect = false
+                                depositSeed((index == #formula and storageProfit or storageSeed), item)
+                                sleep(500)
+                                enterWorld(world,id)
+                                sleep(500)
+                                if isNuked == true then
+                                    getBot().custom_status = "dirtfarm " .. world .. " is nuked"
+                                    getBot().auto_reconnect = false
+                                    getBot():disconnect()
+                                    getBot():stopScript()
+                                end
+                                getBot().auto_collect = true
+                                while getBot().x ~= tilex or getBot().y ~= tiley do
+                                    getBot().move_range = 5
+                                    getBot().move_interval = 350
+                                    getBot():findPath(tilex,tiley)
+                                    sleep(100)
+                                end
+                            end
+                        end
+                    end
+                else
+                    for tiles = -2, 2, 1 do
+                        if getTile(tilex + tiles, tiley).fg == item then
+                            if canFindPath(tilex + tiles, tiley) and getTile(tilex + tiles, tiley):canHarvest() and getBot():getWorld():getTile(tilex + tiles,tiley).flags < 100 and getBot():getWorld():hasAccess(tilex + tiles, tiley) > 0 then
+                                local countPath = #getBot():getPath(tilex + tiles,tiley)
+                                if countPath <= 5 then
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 110
+                                else
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 330
+                                end
+                                getBot():findPath(tilex + tiles, tiley)
+                                reconnect(world, id, tilex, tiley)
+                                while getBot():getWorld():getTile(tilex + tiles, tiley).fg == item do
+                                    getBot():hit(tilex + tiles, tiley)
+                                    sleep(intervalHarvest)
+                                    reconnect(world, id, tilex, tiley)
+                                end
+                                if getItemCount(item - 1) >= 180 then
+                                    local tilex = (tilex < 50 and 1 or 98)
+                                    local extra = (tilex < 50 and -1 or 1)
+                                    local tiley = (tiley == 1 and tiley+2 or tiley == 53 and tiley-2 or tiley)
+                                    while getBot().x ~= tilex or getBot().y ~= tiley do
+                                        getBot().move_range = 5
+                                        getBot().move_interval = 350
+                                        getBot():findPath(tilex,tiley)
+                                        sleep(100)
+                                    end
+                                    while getItemCount(item-1) >= 5 and getItemCount(item) < 185 do
+                                        while tilePlace(item-1,tilex, tiley) do
+                                            for _, i in ipairs(tileTable) do
+                                                if getTile(tilex + extra, tiley + i).fg == 0 and getTile(tilex + extra, tiley + i).bg == 0 and getItemCount(item-1) > 0 then
+                                                    if getBot().x == tilex and getBot().y == tiley and getBot().status == 1 then
+                                                        getBot():place(getBot().x+extra, getBot().y + i, item-1)
+                                                        sleep(intervalPlace)
+                                                    else
+                                                        reconnect(world, id, tilex, tiley)
+                                                        if getTile(getBot().x,getBot().y).fg == 6 then
+                                                            enterWorld(world, id)
+                                                            sleep(500)
+                                                        end
+                                                        getBot():findPath(tilex, tiley)
+                                                    end
+                                                    reconnect(world, id, tilex, tiley)
+                                                end
+                                            end
+                                        end
+                                        while tilePunch(item-1,tilex, tiley) do
+                                            for _, i in ipairs(tileTable) do
+                                                if getTile(tilex + extra, tiley + i).fg == item-1 or getTile(tilex + extra, tiley + i).bg ~= 0 then
+                                                    if getBot().x == tilex and getBot().y == tiley and getBot().status == 1 then
+                                                        getBot():hit(getBot().x+extra, getBot().y + i)
+                                                        sleep(intervalPunch)
+                                                    else
+                                                        reconnect(world, id, tilex, tiley)
+                                                        if getTile(getBot().x,getBot().y).fg == 6 then
+                                                            enterWorld(world, id)
+                                                            sleep(500)
+                                                        end
+                                                        getBot():findPath(tilex, tiley)
+                                                    end
+                                                    reconnect(world, id, tilex, tiley)
+                                                end
+                                            end
+                                        end
+                                    end
+                                    if getItemCount(item) >= 185 then
+                                        getBot().auto_collect = false
+                                        depositSeed((index == #formula and storageProfit or storageSeed), item)
+                                        sleep(500)
+                                        enterWorld(world,id)
+                                        sleep(500)
+                                        if isNuked == true then
+                                            getBot().custom_status = "dirtfarm " .. world .. " is nuked"
+                                            getBot().auto_reconnect = false
+                                            getBot():disconnect()
+                                            getBot():stopScript()
+                                        end
+                                        getBot().auto_collect = true
+                                        while getBot().x ~= tilex or getBot().y ~= tiley do
+                                            getBot().move_range = 5
+                                            getBot().move_interval = 350
+                                            getBot():findPath(tilex,tiley)
+                                            sleep(100)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if getItemCount(item - 1) >= 0 then
+            local tilex = (getBot().x < 50 and 1 or 98)
+            local extra = (tilex < 50 and -1 or 1)
+            local tiley = 51
+            while getBot().x ~= tilex or getBot().y ~= tiley do
+                getBot().move_range = 5
+                getBot().move_interval = 350
+                getBot():findPath(tilex,tiley)
+                sleep(100)
+            end
+            while getItemCount(item-1) >= 5 do
+                while tilePlace(item-1,tilex, tiley,extra) do
+                    for _, i in ipairs(tileTable) do
+                        if getTile(tilex+extra, tiley + i).fg == 0 and getTile(tilex+extra, tiley + i).bg == 0 and getItemCount(item-1) > 0 then
+                            if getBot().x == tilex and getBot().y == tiley and getBot().status == 1 then
+                                getBot():place(getBot().x+extra, getBot().y + i, item-1)
+                                sleep(intervalPlace)
+                            else
+                                reconnect(world, id, tilex, tiley)
+                                if getTile(getBot().x,getBot().y).fg == 6 then
+                                    enterWorld(world, id)
+                                    sleep(500)
+                                end
+                                getBot():findPath(tilex, tiley)
+                            end
+                            reconnect(world, id, tilex, tiley)
+                        end
+                    end
+                end
+                while tilePunch(item-1,tilex, tiley,extra) do
+                    for _, i in ipairs(tileTable) do
+                        if getTile(tilex+extra, tiley + i).fg == item-1 or getTile(tilex+extra, tiley + i).bg ~= 0 then
+                            if getBot().x == tilex and getBot().y == tiley and getBot().status == 1 then
+                                getBot():hit(getBot().x+extra, getBot().y + i)
+                                sleep(intervalPunch)
+                            else
+                                reconnect(world, id, tilex, tiley)
+                                if getTile(getBot().x,getBot().y).fg == 6 then
+                                    enterWorld(world, id)
+                                    sleep(500)
+                                end
+                                getBot():findPath(tilex, tiley)
+                            end
+                            reconnect(world, id, tilex, tiley)
+                        end
+                    end
+                end
+                if getItemCount(item) >= 185 then
+                    getBot().auto_collect = false
+                    depositSeed((index == #formula and storageProfit or storageSeed), item)
+                    sleep(500)
+                    enterWorld(world,id)
+                    sleep(500)
+                    if isNuked == true then
+                        getBot().custom_status = "dirtfarm " .. world .. " is nuked"
+                        getBot().auto_reconnect = false
+                        getBot():disconnect()
+                        getBot():stopScript()
+                    end
+                    while getBot().x ~= tilex or getBot().y ~= tiley do
+                        getBot().move_range = 5
+                        getBot().move_interval = 350
+                        getBot():findPath(tilex,tiley)
+                        sleep(100)
+                    end 
+                end
+            end
+        end
+        getBot().auto_collect = false
+        if getItemCount(item) >= 0 then
+            depositSeed((index == #formula and storageProfit or storageSeed), item)
+            sleep(500)
+        end
+    else
+        getBot().custom_status = "dirtfarm " .. world .. " is nuked"
+        getBot().auto_reconnect = false
+        getBot():disconnect()
+        getBot():stopScript()
+    end
+end
+
+local function checkReadyTree(item)
+    local count = 0
+    for _,tile in pairs(getTiles()) do
+        if tile.fg == item then
+            if tile:canHarvest() then
+                count = count + 1
+            end
+        end
+    end
+    return count
+end
+    
+for i, form in pairs(formula) do
+    if i >= lastStage then
+        local info = seperateString(worldDirtfarm)
+        enterWorld(info.world,info.id)
+        sleep(100)
+        if isNuked == false then
+            if getBot().custom_status:find("stage " .. i) and not getBot().custom_status:find(".5") then
+                getBot().custom_status = "stage " .. i
+                splice(info.world,info.id,form.FirstItemSeedID,form.SecondItemSeedID,form.Result,form.Count)
+                sleep(200)
+            end
+            getBot().custom_status = "stage " .. i .. ".5"
+            while checkReadyTree(form.Result) < form.Count / 2 do
+                sleep(25000)
+                reconnect(info.world,info.id)
+            end
+            getBot().move_range = 5
+            getBot().move_interval = 350
+            harvest(info.world,info.id,form.Result,i)
+            sleep(500)
+            getBot().custom_status = "stage " .. i + 1
+        else
+            getBot().custom_status = "dirtfarm " .. info.world .. " is nuked"
+            getBot().auto_reconnect = false
+            getBot():disconnect()
+            getBot():stopScript()
+        end
+    end
+end

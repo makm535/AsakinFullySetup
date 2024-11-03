@@ -1,0 +1,298 @@
+--[[
+    Script Type: Lucifer Auto Buy Script
+    Created By: Daike no shori
+    Script Version: 1.0.0
+]]
+
+local vendShops = {
+    "H3Z6",
+    "GLX",
+    "XOZC",
+    "0ZL0",
+    "2GYU",
+    "CG6U",
+    "D5S",
+    "THT",
+    "M9I",
+    "9LAZ",
+    "FQL",
+    "GL6E",
+    "BUY1",
+    "WON",
+    "9326",
+    "QH8",
+    "UNTU",
+    "T3OP",
+    "U0Z2",
+    "PZK1",
+    "6GUT",
+    "WUTW",
+    "QVYJ",
+    "UOFS",
+    "4H8",
+    "BVC3",
+    "QBT2",
+    "94RZ",
+    "NPDK"
+}
+
+local storageItem = {"APPORES"}
+
+local storageDoorID = "RETARD"
+
+local itemTargetID = 13
+
+local itemCountPerWorldLock = 100
+
+local targetItemCount = 6200
+
+local divideBotInto = 1
+
+-----------------> Source Code :O <----------------
+local index = 1
+local storage = {}
+
+local function getQuotient(num, thread)
+    return math.ceil(num / thread)
+end
+
+for i, store in pairs(storage) do
+    if getQouient(i,divideBotInto) == getBot().index then
+        table.insert(storage,store)
+    end
+end
+
+local function canFindPath(x,y)
+    return (x == getBot().x and y == getBot().y and true or #getBot():getPath(x,y) > 0 and true or false)
+end
+
+local function waitForCondition(interval, max, condition)
+    local sleepCounter = 0
+    while condition() and sleepCounter < max do
+        listenEvents(1)
+        sleepCounter = sleepCounter + interval
+    end
+    return sleepCounter
+end
+
+local function reconnect(world, id, x, y)
+    if getBot().status ~= BotStatus.online then
+        sleep(60000 * 4)
+        while getBot().status ~= BotStatus.online do
+            sleep(15000)
+            if getBot().status == BotStatus.account_banned then
+                getBot().auto_reconnect = false
+                getBot():stopScript()
+            end
+        end
+        if world then
+            local enterAttempt = 0
+            while not getBot():isInWorld(string.upper(world)) do
+                getBot():warp(world,id)
+                waitForCondition(500, 35000, function() return not getBot():isInWorld(string.upper(world)) and getBot().status == 1 end)
+                if getBot().status ~= 1 then
+                    return reconnect(world,id,x,y)
+                end
+                if not getBot():isInWorld(string.upper(world)) then
+                    enterAttempt = enterAttempt + 1
+                    if enterAttempt >= 4 then
+                        waitForCondition(500, 400000, function() return not getBot():isInWorld(string.upper(world)) and getBot().status == 1 end)                
+                        return reconnect(world,id,x,y)
+                    end
+                else    
+                    sleep(5000)
+                end
+            end
+        end
+        local attempt = 0
+        if world and id ~= "" and getTile(getBot().x,getBot().y).fg == 6 then
+            while getTile(getBot().x,getBot().y).fg == 6 do
+                getBot():warp(world)
+                sleep(3000)
+                attempt = attempt + 1
+                if getBot().status ~= 1 then
+                    return reconnect(world,id,x,y)
+                end
+                if attempt >= 4 then
+                    sleep(60000 * 8)
+                    return reconnect(world,id,x,y)
+                end
+            end
+        end
+        getBot().move_range = 5
+        getBot().move_interval = 300
+        if x and y then
+            while not getBot():isInTile(x,y) do
+                if getBot().status == 1 then
+                    getBot():findPath(x,y)
+                    sleep(500)
+                else
+                    return reconnect(world,id,x,y)
+                end
+            end
+        end
+    end
+end
+
+local function enterWorld(world,id)
+    if not getBot():isInWorld(string.upper(world)) then
+        isNuked = false
+        local enterAttempt = 0
+        addEvent(Event.variantlist, function(var, netid)
+            if var:get(0):getString() == "OnConsoleMessage" then
+                if var:get(1):getString():find("That world is inaccessible.") or var:get(1):getString():find("lower than level") then
+                    isNuked = true
+                    unlistenEvents()
+                end
+            end
+        end)
+        while not getBot():isInWorld(string.upper(world)) do
+            getBot():warp(world)
+            waitForCondition(500, 35000, function() return not (getBot():isInWorld(string.upper(world)) and getBot().status == 1) or getBot().status == BotStatus.changing_subserver end)
+            reconnect(world)
+            listenEvents(4)
+            if not getBot():isInWorld(string.upper(world)) then
+                if isNuked == true then return end
+                enterAttempt = enterAttempt + 1
+                if enterAttempt >= 3 then
+                    waitForCondition(500, 400000, function() return not getBot():isInWorld(string.upper(world)) and getBot().status == 1 end)                
+                    reconnect(world)
+                    enterAttempt = 0
+                end
+            else
+                sleep(2000)
+            end
+        end
+        removeEvents()
+    end
+    local attempt = 0
+    if id ~= "" and getTile(getBot().x,getBot().y).fg == 6 then
+        while getTile(getBot().x,getBot().y).fg == 6 do
+            getBot():warp(world,id)
+            sleep(3000)
+            reconnect(world,id)
+            attempt = attempt + 1
+            if attempt >= 4 then
+                sleep(60000 * 8)
+                reconnect(world,id)
+                attempt = 0
+            end
+        end
+    end
+end
+
+local function checkTile(x,y,num)
+    local count = 0
+    for _,object in pairs(getObjects()) do
+        if math.floor((object.x + 10) / 32) == x and math.floor((object.y + 10) / 32) == y then
+            count = count + object.count
+        end
+    end
+    if count <= (3800 - num) then
+        return true
+    end
+    return false
+end
+
+local function storeSeed()
+    local result = enterWorld(storageItem[index],storageDoorID)
+    sleep(200)
+    if (getBot():getWorld().growscan:getObjects()[itemTargetID] or 0) < targetItemCount then
+        local tileposx, tileposy = getBot().x, getBot().y
+        for tiley = tileposy, 0, -1 do
+            for tilex = tileposx, (tileposx + 10), 1 do
+                if getInfo(getBot():getWorld():getTile(tilex,tiley).fg).collision_type == 0 and canFindPath(tilex-1,tiley) then
+                    local tileDropable = checkTile(tilex,tiley,getBot():getInventory():getItemCount(itemTargetID))
+                    if tileDropable == true then
+                        while not getBot():isInTile(tilex-1,tiley) do
+                            getBot():findPath(tilex-1,tiley)
+                            sleep(500)
+                            reconnect(storageItem[index],storageDoorID,tilex-1,tiley)
+                            getBot():setDirection(false)
+                            sleep(500)
+                            reconnect(storageItem[index],storageDoorID,tilex-1,tiley)
+                        end
+                        while getBot():getInventory():getItemCount(itemTargetID) > 0 and checkTile(tilex,tiley,getBot():getInventory():getItemCount(itemTargetID)) do
+                            getBot():drop(itemTargetID,getBot():getInventory():getItemCount(itemTargetID))
+                            sleep(3000)
+                            reconnect(storageItem[index],storageDoorID,tilex-1,tiley)
+                        end
+                    end
+                end
+                if getBot():getInventory():getItemCount(itemTargetID) == 0 then
+                    break
+                end
+            end
+            if getBot():getInventory():getItemCount(itemTargetID) == 0 then
+                break
+            end
+        end
+    else
+        index = index + 1
+        if index <= #storageItem then
+            return storeSeed()
+        else
+            getBot().custom_status = "done"
+            getBot():stopScript()
+        end
+    end
+end
+
+local function isThereLeft()
+    for _,tile in pairs(getBot():getWorld():getTiles()) do
+        if (tile.fg == 2978 or tile.fg == 9268) and canFindPath(tile.x,tile.y) then
+            local itemID = tile:getExtra().id
+            local price = tile:getExtra().item_price
+            if itemID == itemTargetID and price <= (itemCountPerWorldLock * -1) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+for _,shop in pairs(vendShops) do
+    while true do
+        enterWorld(shop,"")
+        sleep(1000)
+        local haveStock = isThereLeft()
+        if haveStock == true and isNuked == false then
+            if getBot():getInventory():getItemCount(242) >= 1 or getBot():getInventory():getItemCount(1796) > 0 then
+                for _,tile in pairs(getBot():getWorld():getTiles()) do
+                    if (tile.fg == 2978 or tile.fg == 9268) and canFindPath(tile.x,tile.y) then
+                        local itemID = tile:getExtra().id
+                        local price = tile:getExtra().item_price
+                        if itemID == itemTargetID and price <= (itemCountPerWorldLock * -1) then
+                            while not getBot():isInTile(tile.x,tile.y) do
+                                getBot():findPath(tile.x,tile.y)
+                                sleep(500)
+                                reconnect(shop,"",tile.x,tile.y)
+                            end
+                            price = getTile(tile.x,tile.y):getExtra().item_price
+                            if price <= (itemCountPerWorldLock * -1) then
+                                getBot():buy(itemTargetID,price * -1,1)
+                                sleep(6000)
+                                reconnect(shop,"",tile.x,tile.y)
+                            end
+                        end
+                    end
+                    if getBot():getInventory():getItemCount(itemTargetID) >= itemCountPerWorldLock then
+                        break
+                    end
+                end
+                if getBot():getInventory():getItemCount(itemTargetID) >= itemCountPerWorldLock then
+                    storeSeed()
+                    sleep(100)
+                    local result = enterWorld(shop,"")
+                    sleep(1000)
+                    if isNuked == true then getBot():stopScript() end
+                end
+            else
+                getBot():stopScript()
+                sleep(1000)
+            end
+        else
+            break
+        end
+    end
+end

@@ -1,0 +1,711 @@
+local json = require("json")
+
+local configuration = {
+    account = {link = "https://rentry.org/caccount/raw", count = 2},
+    sugarFarm = {link = "https://rentry.org/csugar/raw", count = 2},
+    windowFarm = {link = "https://rentry.org/cwindow/raw", count = 1}
+}
+
+local storageSeed = "CRAWLSTORE1|SIGMA"
+local fileSaveSuccess = "account_success_001"
+local fileSaveFailed = "account_failed_001"
+
+------------------ Dont Touch ------------------
+local tileBreak = 5
+local tileTable = {}
+local account = {}
+local sugarFarm = {}
+local windowFarm = {}
+local resultAccount = {}
+local resultFarm1 = {}
+local resultFarm2 = {}
+local whiteListTrash = {9640,32,6336,18}
+
+getBot().auto_reconnect = false
+
+local function getNumberBot(num, thread)
+    return math.ceil(num / thread)
+end
+
+local function seperateString(str)
+    local growid, password = str:match("([^|]+)|([^|]+)")
+    return {name = growid, pass = password}
+end
+
+local function seperateStrings(str)
+    local growid, password = str:match("([^|]+)|([^|]+)")
+    return {name = growid, pass = password}
+end
+
+local function split_lines(input)
+    local lines = {}
+    for line in input:gmatch("[^\r\n]+") do
+        table.insert(lines, line)
+    end
+    return lines
+end
+
+local function getContent(link)
+    local httpClient = HttpClient.new()
+    httpClient:setMethod(Method.get)
+    httpClient.url = link
+    httpClient.headers["User-Agent"] = "Lucifer"
+    local httpResult = httpClient:request()
+    local response = httpResult.body
+    return response
+end
+
+local content1 = getContent(configuration.account.link)
+local content2 = getContent(configuration.sugarFarm.link)
+local content3 = getContent(configuration.windowFarm.link)
+
+for _, line in ipairs(split_lines(content1)) do
+    if line:find("|") then
+        table.insert(resultAccount, line)
+    end
+end
+
+for _, line in ipairs(split_lines(content2)) do
+    if line:find("|") then
+        table.insert(resultFarm1, line)
+    end
+end
+
+for _, line in ipairs(split_lines(content3)) do
+    if line:find("|") then
+        table.insert(resultFarm2, line)
+    end
+end
+
+for i, accounts in pairs(resultAccount) do
+    if getNumberBot(i, configuration.account.count) == getBot().index then
+        table.insert(account, accounts)
+    end
+end
+
+for i, sugar in pairs(resultFarm1) do
+    if getNumberBot(i, configuration.sugarFarm.count) == getBot().index then
+        table.insert(sugarFarm, sugar)
+    end
+end
+
+for i, window in pairs(resultFarm2) do
+    if getNumberBot(i, configuration.windowFarm.count) == getBot().index then
+        table.insert(windowFarm, window)
+    end
+end
+
+local function write(filename,text)
+    local file = io.open(filename, "a+")
+    file:write(text .. "\n")
+    file:close()
+end
+
+for i = math.floor(tileBreak / 2),1,-1 do
+    i = i * -1
+    table.insert(tileTable,i)
+end
+
+for i = 0, math.ceil(tileBreak / 2) - 1 do
+    table.insert(tileTable,i)
+end
+
+local function canFindPath(x,y)
+    return (x == getBot().x and y == getBot().y and true or #getBot():getPath(x,y) > 0 and true or false)
+end
+
+addEvent(Event.variantlist, function(varlist, netid)
+    if varlist:get(0):getString() == "OnDialogRequest" then
+        local message = varlist:get(1):getString()
+        if message:match("add_button|([^|]+)") then
+            local matching = message:match("add_button|([^|]+)")
+            worldTutorial = matching:upper()
+            unlistenEvents()
+        end
+    end
+end)
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString()
+        if message:find("That world is inaccessible") then
+            nuked = true
+            unlistenEvents()
+        elseif message:find("Players lower than level") then
+            playerLimit = true
+            unlistenEvents()
+        end
+    end
+end)
+
+local function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        nuked = false
+        playerLimit = false
+        local attempt = 0
+        while not getBot():isInWorld(world:upper()) do
+            getBot():warp(world)
+            listenEvents(5)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(10000,15000))
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked and not playerLimit then
+                attempt = attempt + 1
+                if attempt >= 5 then
+                    getBot():disconnect()
+                    sleep(60000 * 20)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(math.random(10000,15000))
+                    end
+                    attempt = 0
+                end
+            end
+            if nuked then
+                return {success = false,nukes = true,playerLimits = false,wrongpass = false}
+            end
+            if playerLimit then
+                return {success = false,nukes = false,playerLimits = true,wrongpass = false}
+            end
+        end
+    end
+    local attempt = 0
+    if id ~= "" and getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+        while getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 do
+            getBot():warp(world,id)
+            sleep(2000)
+            if getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    write("errorlogs.txt","[" .. getBot().index .. "][" .. getBot().name:upper() .. "] - Hindi makapasok sa " .. world:upper() .. "dahil mali ang password")
+                    return {success = false,nukes = false,playerLimits = false,wrongpass = true}
+                end
+            end
+        end
+    end
+    return {success = true,nukes = false,playerLimits = false,wrongpass = false}
+end
+
+function internetValue()
+    local httpClient = HttpClient.new()
+    httpClient:setMethod(Method.get)
+    httpClient.url = "https://www.google.com/"
+    httpClient.headers["User-Agent"] = "Lucifer"
+    local httpResult = httpClient:request()
+    return httpResult.status
+end
+
+function checkPlayerCount()
+    local httpClient = HttpClient.new()
+    httpClient:setMethod(Method.get)
+    httpClient.url = "https://growtopiagame.com/detail/"
+    httpClient.headers["User-Agent"] = "Lucifer"
+    local httpResult = httpClient:request()
+    local responseData = json.decode(httpResult.body)
+    local onlineUserCount = tonumber(responseData.online_user)
+    return onlineUserCount
+end
+
+local function reconnect(world,id,x,y)
+    getBot().auto_reconnect = false
+    if getBot().status ~= 1 then
+        print("[" .. getBot().index .. "][" .. getBot().name:upper() .. "] - Na disconnect ang bot")
+        sleep(60000 * 8)
+        local attempt = 0
+        while getBot().status ~= 1 do
+            local internets = internetValue()
+            if internets ~= 0 then
+                local playerCount = checkPlayerCount()
+                local condition = false
+                if playerCount > 30000 then
+                    getBot():connect()
+                    sleep(13000)
+                    if getBot().status ~= 1 then
+                        if getBot().status == 3 or getBot().status == 4 then
+                            writeFile(fileSaveFailed,getBot().name:upper())
+                            print("[" .. getBot().index .. "][" .. getBot().name:upper() .. "] - Naban ang bot")
+                            removeBot()
+                        elseif getBot().status == 0 or getBot().status == BotStatus.http_block then
+                            attempt = attempt + 1
+                            if attempt >= 6 then
+                                write("errorlogs.txt","[" .. getBot().index .. "][" .. getBot().name:upper() .. "] - Maaring Nag-ercon ang bot ay magrerest for 5 minutes")
+                                sleep(60000 * 5)
+                                attempt = 0
+                            end
+                        end
+                    end
+                else
+                    write("errorlogs.txt","[" .. getBot().index .. "][" .. getBot().name:upper() .. "] - Mababa masyado ang player count maaring down ang server")
+                    while true do
+                        local values = internetValue()
+                        if values ~= 0 then
+                            local playerCount = checkPlayerCount()
+                            if playerCount >= 30000 then
+                                break
+                            else
+                                sleep(30000)
+                            end
+                        else
+                            break
+                        end
+                    end
+                end
+            else
+                write("errorlogs.txt","[" .. getBot().index .. "][" .. getBot().name:upper() .. "] - Walang internet")
+                while true do
+                    local values = internetValue()
+                    if values ~= 0 then
+                        break
+                    else
+                        sleep(60000 * 2)
+                    end
+                end
+            end
+        end
+        while getBot():isInWorld() do
+            getBot():leaveWorld()
+            sleep(5000)
+        end
+        enterWorld(world,id)
+        sleep(1000)
+        while not getBot():isInTile(x,y) do
+            getBot():findPath(x,y)
+            sleep(1000)
+        end
+        sleep(2000)
+    end
+end
+
+local function generateWorld()
+    local name = ""
+    for i = 1, 14 do
+        name = name .. string.char(math.random(97,122))
+    end
+    return string.upper(name)
+end
+
+local function clearHistory()
+    local worlds = {"BUYDF","BUYDFFP","ASEW","BUYPEPPER","BUYLASER","PWY","BUYVENDSLINKX","BUYVENDS","VDLV","BUYHANDS","BUYRARENAME","buytractor","BUYBLAST","BUYQ","BUYCRATE","BUYSPIRITCOOL","BUYCHEM"}
+    for _,world in pairs(worlds) do
+        enterWorld(world,"")
+        sleep(500)
+    end
+    for i = 1, 5 do
+        local world = generateWorld()
+        enterWorld(world,"")
+        sleep(500)
+    end
+end
+
+local function getTutorial()
+    if not getBot():isInWorld() then
+        local random = generateWorld()
+        while not getBot():isInWorld() do
+            getBot():warp(random)
+            sleep(8000)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(15000)
+            end
+        end
+    end
+    getBot():wrenchPlayer(getLocal().netid)
+    sleep(3500)
+    getBot():sendPacket(2, "action|dialog_return\ndialog_name|popup\nnetID|"..getLocal().netid.."|\nbuttonClicked|my_worlds")
+    listenEvents(5)
+end
+
+local function startTutorial()
+    while not getBot():isInWorld(worldTutorial) do
+        getBot():warp(worldTutorial)
+        sleep(8000)
+    end
+    local httpClient = HttpClient.new()
+    httpClient:setMethod(Method.get)
+    httpClient.url = "https://pastebin.com/raw/Z4R5hC6G"
+    httpClient.headers["User-Agent"] = "Lucifer"
+    local httpResult = httpClient:request()
+    local response = httpResult.body
+    load(response)()
+end
+
+local function checkTile(x,y,num)
+    local count = 0
+    for _,object in pairs(getObjects()) do
+        if math.floor((object.x + 10) / 32) == x and math.floor((object.y + 10) / 32) == y then
+            count = count + object.count
+        end
+    end
+    if count <= (4000 - num) then
+        return true
+    end
+    return false
+end
+
+local function checkInclude(itemID)
+    for _, item in pairs(whiteListTrash) do
+        if item == itemID then
+            return true
+        end
+    end
+    return false
+end
+
+local function clear()
+    for _, item in pairs(getBot():getInventory():getItems()) do
+        if getBot():getInventory():getItemCount(item.id) > 0 and not checkInclude(item.id) and item.id ~= itemSeedID and item.id ~= itemSeedID - 1 then
+            getBot():trash(item.id, item.count)
+            sleep(1000)
+        end
+    end
+end
+
+local function storeSeed()
+    getBot().auto_collect = false
+    local worlds = seperateString(storageSeed)
+    local result = enterWorld(worlds.name,worlds.pass)
+    sleep(200)
+    if result.success == true then
+        local tileposx, tileposy = getBot().x, getBot().y
+        for tiley = tileposy, 0, -1 do
+            for tilex = tileposx, (tileposx + 10), 1 do
+                if getInfo(getBot():getWorld():getTile(tilex,tiley).fg).collision_type == 0 and canFindPath(tilex-1,tiley) then
+                    local tileDropable = checkTile(tilex,tiley,getBot():getInventory():getItemCount(itemSeedID))
+                    if tileDropable == true then
+                        while not getBot():isInTile(tilex-1,tiley) do
+                            getBot():findPath(tilex-1,tiley)
+                            sleep(500)
+                            getBot():setDirection(false)
+                            sleep(500)
+                        end
+                        while getBot():getInventory():getItemCount(itemSeedID) > 0 and checkTile(tilex,tiley,getBot():getInventory():getItemCount(itemSeedID)) do
+                            getBot():drop(itemSeedID,getBot():getInventory():getItemCount(itemSeedID))
+                            sleep(3000)
+                        end
+                    end
+                end
+                if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                    break
+                end
+            end
+            if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                break
+            end
+        end
+    else
+        write("errorlogs.txt","[" .. getBot().index .. "][" .. getBot().name:upper() .. "] - Hindi maka-pasok sa storage seed")
+        removeBot()
+    end
+end
+
+function isPlantable(x,y)
+    local tile = getTile(x,y + 1)
+    if not tile.fg then return false end
+    local collision = getInfo(tile.fg).collision_type
+    return (collision == 1 or collision == 2)
+end
+
+function checkEmpty(x,y)
+    for i = 1, 5 do
+        if getBot():getWorld():getTile((x-3)+i,y).fg == 0 and isPlantable((x-3)+i,y) and getBot():getWorld():hasAccess((x-3)+i,y) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+function plant(world,id)
+    for tiley = 1, 53, 1 do
+        for tilex = 3, 98, 5 do
+            if checkEmpty(tilex,tiley) then
+                if canFindPath(tilex,tiley) then
+                    local countPath = #getBot():getPath(tilex,tiley)
+                    if countPath <= 5 then
+                        getBot().move_range = 6
+                        getBot().move_interval = 20
+                    else
+                        getBot().move_range = 6
+                        getBot().move_interval = 235
+                    end
+                    getBot():findPath(tilex,tiley)
+                    reconnect(world,id,tilex,tiley)
+                    while checkEmpty(tilex,tiley) do
+                        for tiles = -2, 2, 1 do
+                            if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                                return
+                            end
+                            if getBot():getWorld():getTile(tilex+tiles,tiley).fg == 0 and isPlantable(tilex+tiles,tiley) and getBot():getWorld():hasAccess(tilex+tiles,tiley) > 0 then
+                                getBot():place(getBot().x + tiles,getBot().y,itemSeedID)
+                                sleep(170)
+                                reconnect(world,id,tilex,tiley)
+                            end
+                        end
+                    end
+                else
+                    for tiles = -2, 2, 1 do
+                        if getTile(tilex + tiles,tiley).fg == 0 then
+                            if canFindPath(tilex + tiles,tiley) and isPlantable(tilex+tiles,tiley) and getBot():getWorld():hasAccess(tilex+tiles,tiley) > 0 then
+                                if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                                    return
+                                end
+                                local countPath = #getBot():getPath(tilex,tiley)
+                                if countPath <= 5 then
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 20
+                                else
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 235
+                                end
+                                getBot():findPath(tilex + tiles,tiley)
+                                reconnect(world,id,tilex,tiley)
+                                while getBot():getWorld():getTile(tilex+tiles,tiley).fg == 0 do
+                                    getBot():place(getBot().x,getBot().y,itemSeedID)
+                                    sleep(170)
+                                    reconnect(world,id,tilex,tiley)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if getBot():getInventory():getItemCount(itemSeedID) > 100 then
+        storeSeed()
+        sleep(200)
+        local result = enterWorld(world,id)
+        if result.success then
+            return
+        else
+            write("errorlogs.txt","[" .. getBot().index .. "][" .. getBot().name:upper() .. "] - Hindi maka-balik sa leveling world - " .. world)
+            removeBot()
+        end
+    end
+end
+
+local function tilePunch(x, y)
+    for _, num in pairs(tileTable) do
+        if (y + num) >= 0 and (y + num) <= 53 and getTile(x, y + num).fg ~= 0 or getTile(x, y + num).bg ~= 0 then
+            return true
+        end
+    end
+    return false
+end
+
+local function tilePlace(x, y)
+    for _, num in pairs(tileTable) do
+        if (y + num) >= 0 and (y + num) <= 53 and getTile(x, y + num).fg == 0 and getTile(x, y + num).bg == 0 and getBot():getInventory():getItemCount(itemSeedID-1) then
+            return true
+        end
+    end
+    return false
+end
+
+local function pnb(world,id)
+    getBot().auto_collect = true
+    if getBot():getInventory():getItemCount(itemSeedID-1) > 0 and getBot():getInventory():getItemCount(itemSeedID) < 195 then
+        local x,y = (getBot().x > 50 and 98 or 1),(getBot().y == 1 and 3 or getBot().y == 53 and 51 or getBot().y)
+        while not getBot():isInTile(x,y) do
+            getBot():findPath(x,y)
+            sleep(500)
+        end
+        while getBot():getInventory():getItemCount(itemSeedID-1) >= tileBreak and getBot():getInventory():getItemCount(itemSeedID) < 190 do
+            while tilePlace((x == 98 and x + 1 or x - 1),y) do
+                for _,i in ipairs(tileTable) do
+                    if (y + i) >= 0 and (y + i) <= 53 and getTile((x == 98 and x + 1 or x - 1),y+i).fg == 0 and getTile((x == 98 and x + 1 or x - 1),y+i).bg == 0 and getBot():getInventory():getItemCount(itemSeedID-1) > 0 then
+                        getBot():place((x == 98 and x + 1 or x - 1),y + i,itemSeedID-1)
+                        sleep(150)
+                        reconnect(world,id,x,y)
+                    end
+                end
+            end
+            while tilePunch((x == 98 and x + 1 or x - 1),y) do
+                for _,i in ipairs(tileTable) do
+                    if (y + i) >= 0 and (y + i) <= 53 and getTile((x == 98 and x + 1 or x - 1),y + i).fg ~= 0 or getTile((x == 98 and x + 1 or x - 1),y + i).bg ~= 0 then
+                        getBot():hit((x == 98 and x + 1 or x - 1),y + i)
+                        sleep(170)
+                        reconnect(world,id,x,y)
+                    end
+                end
+            end
+        end
+        clear()
+    end
+    getBot().auto_collect = true
+end
+
+local function checkHarvest(x,y)
+    for i = 1, 5 do
+        if getBot():getWorld():getTile((x-3)+i,y).fg == itemSeedID and getBot():getWorld():getTile((x-3)+i,y).flags < 100 and getBot():getWorld():getTile((x-3)+i,y):canHarvest() and getBot():getWorld():hasAccess((x-3)+i,y) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+local function harvest(world,id,target)
+    getBot().auto_collect = true
+    for tiley = 1, 53, 2 do
+        for tilex = 3, 98, 5 do
+            if checkHarvest(tilex, tiley) then
+                if canFindPath(tilex, tiley) then
+                    local countPath = #getBot():getPath(tilex,tiley)
+                    if countPath <= 5 then
+                        getBot().move_range = 6
+                        getBot().move_interval = 20
+                    else
+                        getBot().move_range = 6
+                        getBot().move_interval = 235
+                    end
+                    getBot():findPath(tilex, tiley)
+                    reconnect(world, id, tilex, tiley)
+                    while checkHarvest(tilex, tiley) do
+                        for tiles = -2, 2, 1 do
+                            if getBot():getWorld():getTile(tilex + tiles, tiley).fg == itemSeedID and getTile(tilex + tiles, tiley):canHarvest() and getBot():getWorld():getTile(tilex + tiles,tiley).flags < 100 and getBot():getWorld():hasAccess(tilex + tiles, tiley) > 0 then
+                                getBot():hit(tilex + tiles, tiley)
+                                sleep(170)
+                                reconnect(world, id, tilex, tiley)
+                            end
+                        end
+                    end
+                    if getBot():getInventory():getItemCount(itemSeedID-1) >= 170 then
+                        getBot().auto_collect = false
+                        getBot().move_range = 6
+                        getBot().move_interval = 235
+                        pnb(world,id)
+                        sleep(500)
+                        plant(world,id)
+                        sleep(500)
+                        if getBot().level >= target then
+                            return
+                        end
+                        getBot().auto_collect = true
+                    end
+                else
+                    for tiles = -2, 2, 1 do
+                        if getTile(tilex + tiles, tiley).fg == itemSeedID then
+                            if canFindPath(tilex + tiles, tiley) and getTile(tilex + tiles, tiley):canHarvest() and getBot():getWorld():getTile(tilex + tiles,tiley).flags < 100 and getBot():getWorld():hasAccess(tilex + tiles, tiley) > 0 then
+                                local countPath = #getBot():getPath(tilex,tiley)
+                                if countPath <= 5 then
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 20
+                                else
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 235
+                                end
+                                getBot():findPath(tilex + tiles, tiley)
+                                reconnect(world, id, tilex, tiley)
+                                while getBot():getWorld():getTile(tilex + tiles, tiley).fg == itemSeedID do
+                                    getBot():hit(tilex + tiles, tiley)
+                                    sleep(170)
+                                    reconnect(world, id, tilex, tiley)
+                                end
+                                if getBot():getInventory():getItemCount(itemSeedID-1) >= 170 then
+                                    getBot().auto_collect = false
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 235
+                                    pnb(world,id)
+                                    sleep(500)
+                                    plant(world,id)
+                                    sleep(500)
+                                    if getBot().level >= target then
+                                        return
+                                    end
+                                    getBot().auto_collect = true
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    pnb(world,id)
+    sleep(500)
+    plant(world,id)
+    sleep(500)
+    getBot().auto_collect = false
+end
+
+function checkReady()
+    for _,tile in pairs(getBot():getWorld():getTiles()) do
+        if tile.fg == itemSeedID and tile:canHarvest() then
+            return true
+        end
+    end
+    return false
+end
+
+for _,user in pairs(account) do
+    local banned = false
+    local info = seperateStrings(user)
+    getBot():updateBot(info.name,info.pass)
+    sleep(10000)
+    while getBot().status ~= 1 do
+        getBot():connect()
+        sleep(15000)
+        if getBot().status == 3 or getBot().status == 4 then
+            banned = true
+            write(fileSaveFailed,user)
+            break
+        end
+    end
+    if not banned then
+        if getBot().level < 5 then
+            getTutorial()
+            sleep(1000)
+            startTutorial()
+            sleep(1000)
+        end
+        local wattempt = 0
+        while getBot().level < 7 do
+            for _, farm1 in pairs(windowFarm) do
+                if getBot().level < 7 then
+                    local mundo = seperateString(farm1)
+                    itemSeedID = 59
+                    enterWorld(mundo.name,mundo.pass)
+                    sleep(1000)
+                    if wattempt == 1 then
+                        while not checkReady() do
+                            sleep(30000)
+                        end
+                    end
+                    harvest(mundo.name,mundo.pass,7)
+                    sleep(1000)
+                    storeSeed()
+                    sleep(200)
+                end
+            end
+            wattempt = wattempt + 1
+            sleep(2000)
+        end
+        local sattempt = 0
+        while getBot().level < 15 do
+            for _, farm2 in pairs(sugarFarm) do
+                if getBot().level < 16 then
+                    local mundo = seperateString(farm2)
+                    itemSeedID = 955
+                    enterWorld(mundo.name,mundo.pass)
+                    sleep(1000)
+                    if sattempt == 1 then
+                        while not checkReady() do
+                            sleep(30000)
+                        end
+                    end
+                    harvest(mundo.name,mundo.pass,16)
+                    sleep(1000)
+                    storeSeed()
+                    sleep(200)
+                end
+            end
+            sattempt = sattempt + 1
+            sleep(2000)
+        end
+        clearHistory()
+        sleep(200)
+        write(fileSaveSuccess,info.name:upper())
+    end
+end
+
+getBot():disconnect()

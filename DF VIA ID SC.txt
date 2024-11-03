@@ -1,0 +1,1138 @@
+local moveRange = 8          -- Move range
+local moveInterval = 125     -- Move interval
+local showAnimation = true  -- Enable or disable showing animation of bot
+local removeOnBanned = false -- Enable or disable remove on banned.
+
+local worldFarms =
+"C:\\Users\\Administrator\\Desktop\\DFGEN\\DFTOMAKE.txt" -- File path or table containing credentials of world farms
+local multipleBot = true                                 -- Enable or disable multiple bot for each world farms.
+
+local breakLava = false                                  -- Enable or disable break lava.
+local breakRock = false                                  -- Enable or disable break rock.
+local breakCave = true                                   -- Enable or disable break cave
+
+local platForm = false                                    -- Enable or disable place platform in dirt farms.
+local platFormID = 2                                  -- platform item ID.
+local storagePlat = { "WORLD|ID" }
+
+local autoPlant = false -- Enable or disable auto planting seed after build dirt farms.
+local seedID = 3005     -- seed item ID.
+local storageSeed = { "WORLD|ID" }
+
+local saveSeed = true -- Enable or disable saving seed like Dirt,Cave,Rock,Lava seed.
+local storageSave = { "x", }
+
+local clearFire = false -- Enable or disable auto clear fire when detect fire.
+local storageFireHose = { "WORLD|ID" }
+
+local takePickaxe = false -- Enable or disable auto take pickaxe before build dirtfarm
+local storagePickaxe = { "x" }
+
+local webhookStatus = ""
+
+local webhookURL =""
+local messageID = ""
+
+local delayPunch = 180
+local delayPlace = 160
+
+local delayWarp = 8000  -- Delay warp (milliseconds)
+local delayHardWarp = 3 -- Delay rest when hard warp (minutes)
+local delayExecute = 3  -- Delay execute bot (seconds)
+
+--- Don't Touch ---
+local client = getBot()
+client.legit_mode = showAnimation
+client.auto_reconnect = true
+client.reconnect_interval = 15
+client.auto_collect = true
+client.collect_range = 4
+client.move_interval = moveInterval
+client.move_range = moveRange
+
+local condition = 'fg'
+if breakCave then
+    condition = 'bg'
+end
+local avatarURL =
+'https://cdn.discordapp.com/attachments/1232734209068765225/1249716796169388112/Percival_Hitam_512.png?ex=666850f6&is=6666ff76&hm=4727326354f7516627996cd39819a6aecccbe6e0810c608eaff2f3fd4cd4dbb3&'
+
+local start = os.time()
+
+local index = 0
+
+local nuked, stuck
+
+local farmInfo = {}
+local timeInfo = {}
+local trashList = { 5024, 5026, 5028, 5032, 5034, 5036, 5038, 5040, 5042, 5044, 7162, 7164, 9204, 2914, 4, 10, 14, 15 }
+local saveList = { 3, 5, 11, }
+
+local tileSide = {
+    right = { 0 },
+    left = { 0 }
+}
+
+if platForm then
+    table.insert(tileSide.right, -1)
+    table.insert(tileSide.left, 1)
+end
+
+local function findItem(id)
+    return getInventory():findItem(id) or 0
+end
+
+local function isCanFindpath(x, y)
+    return (#client:getPath(x, y) == 0 and client:isInTile(x, y)) or
+        (#client:getPath(x, y) ~= 0 and not client:isInTile(x, y))
+end
+
+local function findPath(x, y)
+    if #client:getPath(x, y) > 5 then
+        client:findPath(x, y)
+    else
+        client:moveTile(x, y)
+        sleep(moveInterval + 50)
+    end
+end
+
+local function trash()
+    for _, itm in pairs(trashList) do
+        for _, inv in pairs(getInventory():getItems()) do
+            if inv.id == itm and inv.count >= 50 then
+                client:trash(itm, findItem(itm))
+                sleep(1000)
+            elseif (inv.id == 3 or inv.id == 15) and inv.count >= 175 then
+                client:trash(inv.id, 25)
+                sleep(1000)
+            end
+        end
+    end
+end
+
+local function seperate(data)
+    local world, id = data, ''
+    if data:find(":") then
+        world, id = data:match("(.+):(.+)")
+    elseif data:find("|") then
+        world, id = data:match("(.+)|(.+)")
+    end
+    return world, id
+end
+
+local function request(url)
+    local request = HttpClient.new()
+    request.url = url
+    request:setMethod(Method.get)
+    local response = request:request()
+    return response.body
+end
+
+local function readWorld(data)
+    local worlds = {}
+
+    if type(data) == 'table' then
+        for _, w in pairs(data) do
+            local world, id = seperate(w)
+            table.insert(worlds, { world = world, id = id })
+        end
+    elseif type(data) == 'string' then
+        if string.match(data, '^https?://') ~= nil then
+            local file = request(data)
+            for line in string.gmatch(file, '[^\r\n]+') do
+                local world, id = seperate(line)
+                table.insert(worlds, { world = world, id = id })
+            end
+        elseif string.match(data, "^.+%.%w+$") ~= nil then
+            local file = io.open(data, 'r')
+            if file then
+                for line in file:lines() do
+                    local world, id = seperate(line)
+                    table.insert(worlds, { world = world, id = id })
+                end
+                file:close()
+            else
+                error("Failed to open file")
+            end
+        end
+    end
+
+    return worlds
+end
+
+local function spreadFarms()
+    local limit = 1
+    if multipleBot then
+        limit = 2
+    end
+    local worlds = {}
+    local world = readWorld(worldFarms)
+    local start = math.floor((getBot().index - 1) / limit) + 1
+    local range = math.ceil(#getBots() / limit)
+    for index = start, #world, range do
+        table.insert(worlds, world[index])
+    end
+
+    return worlds
+end
+
+local function warp(world, id)
+    world = world:upper()
+    id = id or ''
+    nuked = false
+    stuck = false
+    if not client:isInWorld(world) and not nuked then
+        addEvent(Event.variantlist, function(var, netid)
+            if var:get(0):getString() == "OnConsoleMessage" then
+                if var:get(0):getString() == "That world is inaccessible." then
+                    nuked = true
+                    unlistenEvents()
+                end
+            end
+        end)
+        local count = 0
+        while not client:isInWorld(world) and not nuked do
+            Reconnect()
+            client:warp(id == '' and world or world .. ('|' .. id))
+            listenEvents(delayWarp / 1000)
+            sleep(delayWarp)
+            count = count + 1
+            if count % 5 == 0 then
+                client.auto_reconnect = false
+
+                while client.status ~= BotStatus.offline do
+                    client:disconnect()
+                    sleep(5000)
+                end
+                sleep(60000 * delayHardWarp)
+                client.auto_reconnect = true
+            end
+        end
+        sleep(3000)
+        removeEvent(Event.variantlist)
+    end
+    if client:isInWorld(world) and id ~= '' and getTile(client.x, client.y).fg == 6 then
+        local count = 0
+        while getTile(client.x, client.y).fg == 6 and not stuck do
+            Reconnect()
+            client:warp(id == '' and world or world .. ('|' .. id))
+            sleep(delayWarp)
+            count = count + 1
+            if count % 5 == 0 then
+                stuck = true
+            end
+        end
+    end
+end
+
+local function getWorker()
+    local limit = 1
+    if multipleBot then
+        limit = 2
+    end
+    local bots = {}
+    for _, bot in pairs(getBots()) do
+        if (math.floor((bot.index - 1) / limit) + 1) == math.floor((client.index - 1) / limit) + 1 then
+            table.insert(bots, bot)
+        end
+    end
+    return bots
+end
+
+local function getIndex()
+    for i, bot in pairs(getWorker()) do
+        if bot.name == getBot().name then
+            return i
+        end
+    end
+    return 0
+end
+
+local function getStatus(bot)
+    bot = bot or client
+    for val, key in pairs(BotStatus) do
+        if key == bot.status then
+            return val:gsub("_", " "):gsub("(%a)(%w*)", function(first, rest)
+                return first:upper() .. rest:lower()
+            end)
+        end
+    end
+    return 'Unknown'
+end
+
+local function getEmoji(bot)
+    bot = bot or client
+    local emoji = '<a:online:1235638419284037763>'
+    if bot.status ~= BotStatus.online then
+        emoji = '<a:offline:1238731608220237845>'
+    end
+    return emoji
+end
+
+local function formatWorker()
+    local str = ''
+    for _, bot in pairs(getWorker()) do
+        str = str ..
+            "**[" .. bot.index .. "] " ..
+            bot.name:upper() ..
+            " (" ..
+            bot.level ..
+            ")**\nTask: " ..
+            bot.custom_status ..
+            "\nStatus: " .. getEmoji(bot) .. getStatus(bot) .. " (" .. bot:getPing() ..
+            ")\nWorld: ||" .. bot:getWorld().name .. "||\n"
+    end
+    return str
+end
+
+local function formatTime(time)
+    local days = math.floor(time / (24 * 3600))
+    time = time % (24 * 3600)
+    local hours = math.floor(time / 3600)
+    time = time % 3600
+    local minutes = math.floor(time / 60)
+    return string.format("%d Days %02d Hours %02d Minutes", days, hours, minutes)
+end
+
+local function getWorldStatic()
+    local lines = {}
+    for i, world in pairs(farmInfo) do
+        local line = i .. '. ||' .. world .. '||'
+        if timeInfo[world] then
+            if type(timeInfo[world]) ~= 'string' then
+                local time = os.difftime(os.time(), timeInfo[world])
+                line = line .. "(" .. formatTime(time) .. ")"
+            else
+                line = line .. "(" .. timeInfo[world] .. ")"
+            end
+        else
+            line = line .. '(Unknown)'
+        end
+        table.insert(lines, line)
+
+        if #lines > 10 then
+            table.remove(lines, 1)
+        end
+    end
+
+    return table.concat(lines, '\n')
+end
+
+local function webhookOffline(t)
+    if webhookStatus ~= '' then
+        local message = 'status is ' .. getStatus()
+        if t then
+            message = t
+        end
+        local webhook = Webhook.new(webhookStatus)
+        webhook.content = '@everyone'
+        webhook.username = 'Percival'
+        webhook.avatar_url = avatarURL
+        webhook.embed1.use = true
+        webhook.embed1.color = math.random(111111, 999999)
+        webhook.embed1.description = getEmoji() .. ' ' .. client.name ..
+            ' (slot-' .. client.index .. ') ' .. message .. ' <t:' .. os.time() .. ':R>'
+        webhook:send()
+    end
+end
+
+local function webhookInfo()
+    if webhookURL ~= '' and messageID ~= '' then
+        local webhook = Webhook.new(webhookURL)
+        webhook.avatar_url = avatarURL
+        webhook.username = 'Percival'
+        webhook.embed1.use = true
+        webhook.embed1.color = math.random(111111, 999999)
+        webhook.embed1.description = "Last Update: <t:" .. os.time() .. ":R>"
+        webhook.embed1.title = "Auto Dirtfarm By Percival"
+        webhook.embed1.thumbnail = avatarURL
+        local fields = {
+            { name = '<a:BOT:1241252984399069245> Bot List',                  value = formatWorker(),                            inline = false },
+            { name = '<:scrollbulletin:1228977435668910151> World Statistic', value = getWorldStatic(),                          inline = false },
+            { name = "<a:clocks:1249745738586525757> Uptime",                 value = formatTime(os.difftime(os.time(), start)), inline = true }
+        }
+        for _, field in pairs(fields) do
+            webhook.embed1:addField(field.name, field.value, field.inline)
+        end
+        webhook.embed1.footer.text = '[Lucifer]: Auto Dirtfarm Made By Percival'
+        webhook.embed1.timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+        webhook:edit(messageID)
+    end
+end
+
+function Reconnect(world, id, x, y)
+    if client.status ~= BotStatus.online then
+        webhookOffline()
+        local lastStatus = client.custom_status
+        local lastName = client.name
+        client.custom_status = 'Reconnecting'
+        webhookInfo()
+        local sended = false
+        while client.status ~= BotStatus.online do
+            sleep(15000)
+            if client.status == BotStatus.account_banned then
+                if not sended then
+                    webhookOffline()
+                    sended = true
+                end
+                if removeOnBanned then
+                    removeBot()
+                end
+            end
+        end
+        sleep(3000)
+        if client.name ~= lastName then
+            while client.level == 1 do
+                sleep(5000)
+            end
+        end
+        if lastStatus == '' then
+            client.custom_status = "Reconnected"
+        else
+            client.custom_status = lastStatus
+        end
+        webhookInfo()
+        webhookOffline()
+    end
+    if client.status == BotStatus.online then
+        if world then
+            warp(world, id)
+        end
+        if x and y then
+            while not client:isInTile(x, y) do
+                findPath(x, y)
+                sleep(500)
+            end
+        end
+    end
+end
+
+local function round(number)
+    return number % 1 > 0.5 and math.ceil(number) or math.floor(number)
+end
+
+local function tileDrop(x, y, num)
+    local count = 0
+    local stack = 0
+    for _, obj in pairs(getObjects()) do
+        local ex, ye = round(obj.x / 32), math.floor(obj.y / 32)
+        if ex == x and ye == y then
+            count = count + obj.count
+            stack = stack + 1
+        end
+    end
+    return stack < 20 and count <= (4000 - num)
+end
+
+local function customTileStorage()
+    local tiles = {}
+    for y = 53, 0, -1 do
+        for x = 0, 99 do
+            table.insert(tiles, { x = x, y = y })
+        end
+    end
+    return tiles
+end
+
+local function trash2()
+    local trashLists = trashList
+    if not saveSeed then
+        for _, id in pairs(saveList) do
+            table.insert(trashLists, id)
+        end
+    end
+    for _, inv in pairs(getInventory():getItems()) do
+        for _, itm in pairs(trashLists) do
+            if inv.id == itm then
+                client:trash(itm, findItem(itm))
+                sleep(1000)
+            end
+        end
+    end
+    if saveSeed then
+        local function isNeedToSave()
+            for _, inv in pairs(getInventory():getItems()) do
+                for _, itm in pairs(saveList) do
+                    if inv.id == itm and inv.count > 0 then
+                        return true
+                    end
+                end
+            end
+            return false
+        end
+        if isNeedToSave() then
+            client.auto_collect = false
+            while isNeedToSave() do
+                local index = math.random(#storageSave)
+                local storage = storageSave[index]
+                local world, id = seperate(storage)
+                warp(world, id)
+                if not nuked then
+                    if not stuck then
+                        for _, itm in pairs(saveList) do
+                            for _, tile in pairs(customTileStorage()) do
+                                if isCanFindpath(tile.x - 1, tile.y) and isCanFindpath(tile.x, tile.y) and tileDrop(tile.x, tile.y, findItem(itm)) then
+                                    while not client:isInTile(tile.x - 1, tile.y) do
+                                        findPath(tile.x - 1, tile.y)
+                                        Reconnect(world, id)
+                                    end
+                                    while findItem(itm) > 0 and tileDrop(tile.x, tile.y, findItem(itm)) do
+                                        client:setDirection(false)
+                                        sleep(1000)
+                                        client:drop(itm, findItem(itm))
+                                        sleep(2000)
+                                        Reconnect(world, id, tile.x - 1, tile.y)
+                                    end
+                                end
+                                if findItem(itm) == 0 then
+                                    break
+                                end
+                            end
+                        end
+                    else
+                        table.remove(storageSave, index)
+                    end
+                else
+                    table.remove(storageSave, index)
+                end
+            end
+            while client:isInWorld() do
+                client:leaveWorld()
+                sleep(5000)
+            end
+            client.auto_collect = true
+        end
+    end
+end
+
+local function breakSide(world, id)
+    local function checkSide(x, y, ex)
+        for _, xe in pairs(ex) do
+            if getTile(x + xe, y + 1)[condition] ~= 0 and hasAccess(x + xe, y + 1) > 0 then
+                return true
+            end
+        end
+        return false
+    end
+    local function breakAt(x, ex)
+        client.custom_status = "Break side " .. x
+        webhookInfo()
+        for _, tile in pairs(getTiles()) do
+            if checkSide(tile.x, tile.y, ex) and isCanFindpath(tile.x, tile.y) and tile.x == x and tile.y >= 23 and tile.y < 53 then
+                while not client:isInTile(tile.x, tile.y) do
+                    findPath(tile.x, tile.y)
+                    Reconnect(world, id)
+                end
+                while checkSide(tile.x, tile.y, ex) do
+                    for _, tilex in pairs(ex) do
+                        if getTile(tile.x + tilex, tile.y + 1)[condition] ~= 0 and hasAccess(tile.x + tilex, tile.y + 1) > 0 then
+                            client:hit(tile.x + tilex, tile.y + 1)
+                            sleep(delayPunch)
+                            Reconnect(world, id, tile.x, tile.y)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if index == 1 then
+        breakAt(0, tileSide.left)
+        breakAt(99, tileSide.right)
+    else
+        breakAt(99, tileSide.right)
+        breakAt(0, tileSide.left)
+    end
+end
+
+local function takeItem(storage, world, id, item, limit)
+    if findItem(item) < limit then
+        client.auto_collect = false
+        while findItem(item) < limit do
+            local index = math.random(#storage)
+            local storages = storage[index]
+            local worlds, door = seperate(storages)
+            warp(worlds, door)
+            if not nuked then
+                if not stuck then
+                    for _, obj in pairs(getObjects()) do
+                        if obj.id == item then
+                            findPath(round(obj.x / 32), math.floor(obj.y / 32))
+                            sleep(500)
+                            Reconnect(worlds, door)
+                            client:collectObject(obj.oid, 3)
+                            sleep(500)
+                        end
+                        if findItem(item) >= limit then
+                            while findItem(item) > limit do
+                                client:moveRight()
+                                sleep(500)
+                                client:setDirection(true)
+                                sleep(500)
+                                client:drop(item, findItem(item) - limit)
+                                sleep(500)
+                                Reconnect(worlds, door)
+                            end
+                            break
+                        end
+                    end
+                else
+                    table.remove(storage, index)
+                end
+            else
+                table.remove(storage, index)
+            end
+        end
+        warp(world, id)
+        client.auto_collect = true
+    end
+end
+
+local function storeItem(storage, world, id, item, limit)
+    if findItem(item) >= limit then
+        client.auto_collect = false
+        while findItem(item) >= limit do
+            local index = math.random(#storage)
+            local storages = storage[index]
+            local worlds, door = seperate(storages)
+            warp(worlds, door)
+            if not nuked then
+                if not stuck then
+                    while findItem(item) >= limit do
+                        client:moveLeft()
+                        sleep(500)
+                        client:setDirection(false)
+                        sleep(500)
+                        client:drop(item, findItem(item))
+                        sleep(500)
+                        Reconnect(worlds, door)
+                    end
+                else
+                    table.remove(storage, index)
+                end
+            else
+                table.remove(storage, index)
+            end
+        end
+        warp(world, id)
+        client.auto_collect = true
+    end
+end
+
+local function placePlatform(world, id)
+    if platForm then
+        client.custom_status = "Place platform"
+        webhookInfo()
+        takeItem(storagePlat, world, id, platFormID, 54)
+        local function placeLeft()
+            for _, tile in pairs(getTiles()) do
+                if tile.y > 0 and tile.y % 2 == 0 and tile.x == 1 and tile.fg == 0 then
+                    while not client:isInTile(tile.x, tile.y + 1) do
+                        client:findPath(tile.x, tile.y + 1)
+                        Reconnect(world, id)
+                    end
+                    while getTile(tile.x, tile.y).fg == 0 do
+                        client:place(tile.x, tile.y, platFormID)
+                        sleep(500)
+                        Reconnect(world, id, tile.x, tile.y + 1)
+                    end
+                end
+            end
+        end
+        local function placeRight()
+            for _, tile in pairs(getTiles()) do
+                if tile.y > 0 and tile.y % 2 == 0 and tile.x == 98 and tile.fg == 0 then
+                    while not client:isInTile(tile.x, tile.y + 1) do
+                        client:findPath(tile.x, tile.y + 1)
+                        Reconnect(world, id)
+                    end
+                    while getTile(tile.x, tile.y).fg == 0 do
+                        client:place(tile.x, tile.y, platFormID)
+                        sleep(500)
+                        Reconnect(world, id, tile.x, tile.y + 1)
+                    end
+                end
+            end
+        end
+        if index == 1 then
+            placeLeft()
+            placeRight()
+        else
+            placeRight()
+            placeLeft()
+        end
+    end
+end
+
+local customTiles = function()
+    local tiles = {}
+    for y = index == 1 and 0 or 53, index == 1 and 53 or 0, index == 1 and 1 or -1 do
+        for x = 1, 98 do
+            table.insert(tiles, { x = x, y = y })
+        end
+    end
+    return tiles
+end
+
+local function placeDirt(world, id)
+    for _, tile in pairs(customTiles()) do
+        if tile.y % 2 == 1 and getTile(tile.x, tile.y + 1).fg == 0 and hasAccess(tile.x, tile.y + 1) > 0 then
+            findPath(tile.x, tile.y)
+            Reconnect(world, id)
+            for _, x in pairs({ 0, 1, 2 }) do
+                if tile.x + x >= 1 and tile.x + x <= 98 then
+                    while getTile(tile.x + x, tile.y + 1).fg == 0 and hasAccess(tile.x + x, tile.y + 1) > 0 do
+                        client:place(tile.x + x, tile.y + 1, 2)
+                        sleep(delayPlace)
+                        Reconnect(world, id, tile.x, tile.y)
+                    end
+                end
+                if findItem(2) == 0 then
+                    break
+                end
+            end
+            if findItem(2) == 0 then
+                break
+            end
+        end
+    end
+end
+
+local function checkPlace()
+    for _, tile in pairs(customTiles()) do
+        if tile.y % 2 == 1 and getTile(tile.x, tile.y + 1).fg == 0 and hasAccess(tile.x, tile.y + 1) > 0 and isCanFindpath(tile.x, tile.y) then
+            return true
+        end
+    end
+    return false
+end
+
+local function isPlantable(x, y)
+    local tile1 = getTile(x, y).fg
+    local tile2 = getTile(x, y + 1).fg
+    if not tile1 or not tile2 then return false end
+    local collision = getInfo(tile2).collision_type
+    return tile1 == 0 and tile2 ~= 0 and (collision > 0 and collision <= 3) and isCanFindpath(x, y) and
+        hasAccess(x, y) > 0
+end
+
+local function isHarvestable(x, y, id)
+    local tile = getTile(x, y)
+    if not tile.fg then return false end
+    return tile.fg == id and tile:canHarvest() and hasAccess(x, y) > 0 and isCanFindpath(x, y)
+end
+
+local function growscan(id)
+    return getWorld().growscan:getObjects()[id] or 0
+end
+
+local function takeSeed(storage, world, id, item)
+    if findItem(item) == 0 then
+        client.auto_collect = false
+        while findItem(item) == 0 do
+            local index = math.random(#storage)
+            local storages = storage[index]
+            local worlds, door = seperate(storages)
+            warp(worlds, door)
+            if not nuked then
+                if not stuck then
+                    if growscan(item) == 0 then
+                        table.remove(storage, index)
+                    end
+                    for _, obj in pairs(getObjects()) do
+                        if obj.id == item then
+                            findPath(round(obj.x / 32), math.floor(obj.y / 32))
+                            sleep(500)
+                            Reconnect(worlds, door)
+                            client:collectObject(obj.oid, 3)
+                            sleep(500)
+                        end
+                        if findItem(item) > 0 then
+                            break
+                        end
+                    end
+                else
+                    table.remove(storage, index)
+                end
+            else
+                table.remove(storage, index)
+            end
+        end
+        warp(world, id)
+        client.auto_collect = true
+    end
+end
+
+local function farmingDirt(world, id, clear)
+    local y = 27
+    if index ~= 1 then
+        y = 29
+    end
+    local tiles = {}
+    for x = 1, 25 do
+        table.insert(tiles, { x = x, y = y })
+    end
+    local function scanReady(id, tiles)
+        local count = 0
+        for _, tile in pairs(tiles) do
+            if getTile(tile.x, tile.y).fg == id and getTile(tile.x, tile.y):canHarvest() then
+                count = count + 1
+            end
+        end
+        return count
+    end
+    if not clear then
+        while findItem(2) == 0 do
+            if findItem(3) == 0 then
+                takeSeed(storageSave, world, id, 3)
+            end
+            for _, tile in pairs(tiles) do
+                if isPlantable(tile.x, tile.y) then
+                    findPath(tile.x, tile.y)
+                    Reconnect(world, id)
+                    for _, ex in pairs({ 0, 1, 2 }) do
+                        if (tile.x + ex) >= 1 and (tile.x + ex) <= 25 then
+                            while isPlantable(tile.x + ex, tile.y) and findItem(3) > 0 do
+                                client:place(tile.x + ex, tile.y, 3)
+                                sleep(delayPlace)
+                                Reconnect(world, id, tile.x, tile.y)
+                            end
+                        end
+                    end
+                end
+                if findItem(3) == 0 then
+                    break
+                end
+            end
+            while scanReady(3, tiles) == 0 do
+                sleep(5000)
+            end
+            for _, tile in pairs(tiles) do
+                if isHarvestable(tile.x, tile.y, 3) then
+                    findPath(tile.x, tile.y)
+                    Reconnect(world, id)
+                    for _, ex in pairs({ 0, 1, 2 }) do
+                        if (tile.x + ex) >= 1 and (tile.x + ex) <= 25 then
+                            while isHarvestable(tile.x + ex, tile.y, 3) do
+                                client:hit(tile.x + ex, tile.y)
+                                sleep(delayPunch)
+                                Reconnect(world, id, tile.x, tile.y)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    else
+        for _, tile in pairs(getTiles()) do
+            if getTile(tile.x, tile.y).fg == 3 and isCanFindpath(tile.x, tile.y) and hasAccess(tile.x, tile.y) > 0 then
+                while not client:isInTile(tile.x, tile.y) do
+                    findPath(tile.x, tile.y)
+                    Reconnect(world, id)
+                end
+                while getTile(tile.x, tile.y).fg == 3 do
+                    client:hit(tile.x, tile.y)
+                    sleep(delayPunch)
+                    Reconnect(world, id, tile.x, tile.y)
+                end
+                if getInventory():findItem(2) > 175 then
+                    client:trash(2, 25)
+                    sleep(500)
+                end
+            end
+        end
+    end
+end
+
+local function wear(id)
+    if getBot():isInWorld() then
+        while findItem(id) > 0 and not getInventory():getItem(id).isActive do
+            getBot():wear(id)
+            sleep(500)
+        end
+    end
+end
+
+local function checkFire(world, id)
+    if clearFire then
+        local function countFire()
+            local count = 0
+            for _, tile in pairs(getTiles()) do
+                if tile.flags == 4096 then
+                    count = count + 1
+                end
+            end
+            return count
+        end
+        if countFire() ~= 0 then
+            client.legit_mode = true
+            client.anti_fire = true
+            if findItem(3066) == 0 then
+                takeItem(storageFireHose, world, id, 3066, 1)
+                wear(3066)
+            end
+            while countFire() ~= 0 do
+                sleep(5000)
+            end
+            client.anti_fire = false
+            client.legit_mode = showAnimation
+            storeItem(storageFireHose, world, id, 3066, 1)
+            if takePickaxe then
+                wear(98)
+            end
+        end
+    end
+end
+
+local function breakMain(world, id)
+    client.custom_status = "Break dirt"
+    webhookInfo()
+    local offsetTiles = { -2, 0, 2 }
+    local function setTile()
+        local tiles = {}
+        local tileY = { 27, 33, 39, 45, 51 }
+        for y = index == 1 and 1 or #tileY, index == 1 and #tileY or 1, index == 1 and 1 or -1 do
+            for x = index == 1 and 0 or 99, index == 1 and 99 or 1, index == 1 and 1 or -1 do
+                table.insert(tiles, { x = x, y = tileY[y] })
+            end
+        end
+        return tiles
+    end
+    local function checkTile(x, y)
+        for _, ye in pairs(offsetTiles) do
+            if getTile(x, y + ye)[condition] ~= 0 and hasAccess(x, y + ye) > 0 then
+                return true
+            end
+        end
+        return false
+    end
+    local function breakMain(x)
+        for _, tile in pairs(setTile()) do
+            if checkTile(tile.x + x, tile.y) and isCanFindpath(tile.x, tile.y) then
+                checkFire(world, id)
+                while not client:isInTile(tile.x, tile.y) do
+                    findPath(tile.x, tile.y)
+                    Reconnect(world, id)
+                end
+                while checkTile(tile.x + x, tile.y) do
+                    for _, y in pairs(offsetTiles) do
+                        if getTile(tile.x + x, tile.y + y)[condition] ~= 0 and hasAccess(tile.x + x, tile.y + y) > 0 then
+                            client:hit(tile.x + x, tile.y + y)
+                            sleep(delayPunch)
+                            Reconnect(world, id, tile.x, tile.y)
+                        end
+                    end
+                end
+                trash()
+            end
+            if findItem(2) >= 100 then
+                placeDirt(world, id)
+            end
+        end
+    end
+    if index == 1 then
+        breakMain(1)
+    else
+        breakMain(-1)
+    end
+end
+
+local function customTiles()
+    local tiles = {}
+    for y = 0, 53 do
+        if y % 4 == 1 then
+            for x = 0, 99 do
+                table.insert(tiles, { x = x, y = y, area = index == 1 and { 0, 1, 2 } or { 0, -1, -2 } })
+            end
+        else
+            for x = 99, 0, -1 do
+                table.insert(tiles, { x = x, y = y, area = index == 1 and { 0, -1, -2 } or { 0, 1, 2 } })
+            end
+        end
+    end
+    return tiles
+end
+
+local function isPlantable(x,y)
+    local tile = getTile(x,y + 1)
+    if not tile.fg then return false end
+    local collision = getInfo(tile.fg).collision_type
+    return (collision == 1 or collision == 2)
+end
+
+local function checkEmpty(x,y)
+    for i = 1, 5 do
+        if getBot():getWorld():getTile((x-3)+i,y).fg == 0 and isPlantable((x-3)+i,y) and getBot():getWorld():hasAccess((x-3)+i,y) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+local function plant(world,id)
+    for tiley = 1, 53, 2 do
+        for tilex = 3, 98, 5 do
+            if checkEmpty(tilex,tiley) then
+                if isCanFindpath(tilex,tiley) then
+                    local countPath = #getBot():getPath(tilex,tiley)
+                    if countPath <= 5 then
+                        getBot().move_range = 6
+                        getBot().move_interval = 110
+                    else
+                        getBot().move_range = 6
+                        getBot().move_interval = 235
+                    end
+                    getBot():findPath(tilex,tiley)
+                    Reconnect(world, id, tilex, tiley)
+                    while checkEmpty(tilex,tiley) do
+                        for tiles = -2, 2, 1 do
+                            if getBot():getInventory():getItemCount(seedID) == 0 then
+                                takeSeed(storageSeed, world, id, seedID)
+                                sleep(500)
+                                getBot().move_range = 6
+                                getBot().move_interval = 235
+                                while not getBot():isInTile(tilex,tiley) do
+                                    getBot():findPath(tilex,tiley)
+                                    sleep(500)
+                                    Reconnect(world, id, tile.x, tile.y)
+                                end
+                            end
+                            if getTile(tilex+tiles,tiley).fg == 0 and isPlantable(tilex+tiles,tiley) and getBot():getWorld():hasAccess(tilex+tiles,tiley) > 0 then
+                                getBot():place(getBot().x + tiles,getBot().y,seedID)
+                                sleep(delayPlace)
+                                Reconnect(world, id, tilex, tiley)
+                            end
+                        end
+                    end
+                else
+                    for tiles = -2, 2, 1 do
+                        if getTile(tilex + tiles,tiley).fg == 0 then
+                            if canFindPath(tilex + tiles,tiley) and isPlantable(tilex+tiles,tiley) and getBot():getWorld():hasAccess(tilex+tiles,tiley) > 0 then
+                                if getBot():getInventory():getItemCount(seedID) == 0 then
+                                    takeSeed(storageSeed, world, id, seedID)
+                                    sleep(500)
+                                end
+                                local countPath = #getBot():getPath(tilex,tiley)
+                                if countPath <= 5 then
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 110
+                                else
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 235
+                                end
+                                getBot():findPath(tilex + tiles,tiley)
+                                Reconnect(world, id, tilex + tiles, tiley)
+                                while getTile(tilex+tiles,tiley).fg == 0 do
+                                    getBot():place(getBot().x,getBot().y,seedID)
+                                    sleep(delayPlace)
+                                    Reconnect(world, id, tilex + tiles, tiley)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function breakRocks(world, id)
+    if breakRock then
+        for _, tile in pairs(getTiles()) do
+            if getTile(tile.x, tile.y).fg == 10 and isCanFindpath(tile.x, tile.y - 1) and hasAccess(tile.x, tile.y) > 0 then
+                while not client:isInTile(tile.x, tile.y - 1) do
+                    findPath(tile.x, tile.y - 1)
+                    Reconnect(world, id)
+                end
+                while getTile(tile.x, tile.y).fg == 10 do
+                    client:hit(tile.x, tile.y)
+                    sleep(delayPunch)
+                    Reconnect(world, id, tile.x, tile.y - 1)
+                end
+            end
+        end
+    end
+end
+
+local function breakLavas(world, id)
+    if breakLava then
+        for _, tile in pairs(getTiles()) do
+            if getTile(tile.x, tile.y).fg == 4 and isCanFindpath(tile.x, tile.y - 1) and hasAccess(tile.x, tile.y) > 0 then
+                while not client:isInTile(tile.x, tile.y - 1) do
+                    findPath(tile.x, tile.y - 1)
+                    Reconnect(world, id)
+                end
+                while getTile(tile.x, tile.y).fg == 4 do
+                    client:hit(tile.x, tile.y)
+                    sleep(delayPunch)
+                    Reconnect(world, id, tile.x, tile.y - 1)
+                end
+            end
+        end
+    end
+end
+
+local function writeFile(text)
+    local file = io.open("df-done.txt",'a')
+    if file then
+        file:write(text..'\n')
+        file:close()
+    end
+end
+
+local function buildDirtfarm(world, id)
+    client.custom_status = "Build dirtfarm at " .. world
+    webhookInfo()
+    sleep(100)
+    breakSide(world, id)
+    placePlatform(world, id)
+    breakMain(world, id)
+    breakRocks(world, id)
+    breakLavas(world, id)
+    while checkPlace() do
+        if findItem(2) == 0 then
+            client.custom_status = "Farming Dirt"
+            farmingDirt(world, id)
+        end
+        placeDirt(world, id)
+        sleep(1000)
+    end
+    farmingDirt(world, id, true)
+    if autoPlant then
+        plant(world, id)
+    end
+    trash2()
+    if index == 1 then
+       writeFile(world..'|'..id) 
+    end
+end
+
+local function runScript()
+    sleep(client.index * (1000 * delayExecute))
+    Reconnect()
+    index = getIndex()
+    if index == 0 then
+        error('Failed to initialize bots!')
+    end
+    for _, data in pairs(spreadFarms()) do
+        warp(data.world, data.id)
+        table.insert(farmInfo, data.world)
+        timeInfo[data.world] = os.time()
+        if not nuked then
+            if not stuck then
+                if takePickaxe then
+                    takeItem(storagePickaxe, data.world, data.id, 98, 1)
+                    wear(98)
+                end
+                buildDirtfarm(data.world, data.id)
+                timeInfo[data.world] = formatTime(os.difftime(os.time(), timeInfo[data.world]))
+            else
+                timeInfo[data.world] = "STUCK"
+            end
+        else
+            timeInfo[data.world] = "NUKED"
+        end
+    end
+end
+
+runScript()
+removeBot()

@@ -1,0 +1,656 @@
+local playerName = "pirseowt"
+local worldList = {}
+local contentList = {}
+
+local tableStructure = {
+	  
+    -- @ stage one of trading
+    isWorldLockWrenched = false,
+    isWorldKeyRecieved = false,
+    
+    -- @ stage two of trading
+    isTradeCanceled = false,
+    isPlayerTraded = false,
+    userBalanceLock = 0,
+    isPlayerTwoTraded = false,
+    
+    -- @ stage three of trading
+    isDealChanged = false,
+    isWorldKeyPlaced = false,
+    isBotAlreadyAccepted = false,
+    finalConfirmation = false,
+    isFinalStageAccepted = false,
+    isFinalDialogAppeared = false,
+    isBotWaitingToAppeared = false
+}
+
+local function split_lines(input)
+    local lines = {}
+    for line in input:gmatch("[^\r\n]+") do
+        table.insert(lines, line)
+    end
+    return lines
+end
+    
+for _, line in pairs(split_lines(read(getBot().name:upper()))) do
+    table.insert(worldList,line)
+    table.insert(contentList,line)
+end
+
+local left = #worldList
+
+local function resetStageHalf()
+    tableStructure.isTradeCanceled = false
+    tableStructure.isPlayerTraded = false
+    tableStructure.userBalanceLock = 0
+    tableStructure.isWorldKeyPlaced = false
+    tableStructure.isBotAlreadyAccepted = false
+    tableStructure.isDealChanged = false
+    tableStructure.isFinalStageAccepted = false
+    tableStructure.isPlayerTwoTraded = false
+    tableStructure.finalConfirmation = false
+    tableStructure.isFinalDialogAppeared = false
+    tableStructure.isBotWaitingToAppeared = false
+end
+
+local function resetStageAll()
+    tableStructure.isWorldLockWrenched = false
+    tableStructure.isWorldKeyRecieved = false
+    tableStructure.isTradeCanceled = false
+    tableStructure.isPlayerTraded = false
+    tableStructure.userBalanceLock = 0
+    tableStructure.isWorldKeyPlaced = false
+    tableStructure.isDealChanged = false
+    tableStructure.isBotAlreadyAccepted = false
+    tableStructure.isFinalStageAccepted = false
+    tableStructure.isPlayerTwoTraded = false
+    tableStructure.finalConfirmation = false
+    tableStructure.isFinalDialogAppeared = false
+    tableStructure.isBotWaitingToAppeared = false
+end
+
+function getCurrentTime()
+    local time = os.date("*t")
+    local hour = time.hour
+    local period = "AM"
+
+    if hour >= 12 then
+        period = "PM"
+        if hour > 12 then
+            hour = hour - 12
+        end
+    end
+
+    if hour == 0 then
+        hour = 12
+    end
+
+    local minute = string.format("%02d", time.min)
+
+    return hour .. ":" .. minute .. " " .. period
+end
+
+local function isExisting()
+    for _,player in pairs(getBot():getWorld():getPlayers()) do
+        if player.name:lower() == playerName:lower() then
+            return true, player.netid
+        end
+    end
+    return false, nil
+end
+
+local function isBotOwner()
+    local accessPath = 0
+    local invalidPath = 0
+    local publicPath = 0
+    for _,tile in pairs(getTiles()) do
+        if getBot():getWorld():hasAccess(tile.x,tile.y) > 0 then
+            if getBot():getWorld():hasAccess(tile.x,tile.y) == 1 then
+                accessPath = accessPath + 1
+            else
+                publicPath = publicPath + 1
+            end
+        else
+            invalidPath = invalidPath + 1
+        end
+    end
+    if accessPath > invalidPath and accessPath > publicPath then
+        return true
+    end
+    return false
+end
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnDialogRequest" then
+        message = variant:get(1):getString()
+        if message:find("|`wEdit World Lock``|") then
+            tableStructure.isWorldLockWrenched = true
+        end
+    end
+end)
+    
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnStartTrade" then
+        tableStructure.isPlayerTraded = true
+    end
+end)
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnTradeStatus" then
+        tableStructure.isPlayerTwoTraded = true
+        message = variant:get(3):getString():lower()
+        if message:find(playerName:lower()) then
+            message2 = variant:get(4):getString():lower()
+            if message2:find("add_slot|242|") then
+                count = string.match(message2,"add_slot|242|(%d+)")
+                tableStructure.userBalanceLock = tonumber(count)
+                print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - User new balance: " .. tableStructure.userBalanceLock)
+            end
+        elseif message:find(getBot().name:lower()) then
+            message2 = variant:get(4):getString():lower()
+            if message2:find("add_slot|1424") then
+                tableStructure.isWorldKeyPlaced = true
+            end
+            if message2:find("accepted|1") then
+                tableStructure.isBotAlreadyAccepted = true
+            else
+                tableStructure.isBotAlreadyAccepted = false
+            end
+        end
+    end
+end)
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnTextOverlay" then
+        message = variant:get(1):getString():lower()
+        if message:find("has canceled") then
+            tableStructure.isTradeCanceled = true
+        end
+        if message:find("canceling trade since") then
+            tableStructure.isTradeCanceled = true
+        end
+        if message:find("left the trade") then
+            tableStructure.isTradeCanceled = true
+        end
+        if message:find("trade canceled") then
+            tableStructure.isTradeCanceled = true
+        end
+        if message:find("too busy to trade") then
+            tableStructure.isTradeCanceled = true
+        end
+    end
+end)
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString():lower()
+        if message:find("canceling trade since") then
+            tableStructure.isTradeCanceled = true
+        elseif message:find("trade change:") and message:find("removed") then
+            if message:find("world lock") then
+                tableStructure.userBalanceLock = 0
+                print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - User new balance: " .. tableStructure.userBalanceLock)
+            end
+            if tableStructure.isBotWaitingToAppeared == true then
+                print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - The deal has changed")
+                tableStructure.isDealChanged = true
+            end
+        end
+    end
+end)
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnDialogRequest" then
+        message = variant:get(1):getString()
+        if message:find("Trade Confirmation") then
+            tableStructure.isFinalDialogAppeared = true
+        end
+        if message:find("World Lock|left|242") then
+            tableStructure.finalConfirmation = true
+        end
+    end
+end)
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnTalkBubble" then
+        message = variant:get(2):getString()
+        if message:find("Trade accepted") then
+            tableStructure.isFinalStageAccepted = true
+        end
+    end
+end)
+
+local function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        nuked = false
+        playerLimit = false
+        local attempt = 0
+        while not getBot():isInWorld(world:upper()) do
+            getBot():warp(world)
+            listenEvents(5)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(10000,15000))
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked and not playerLimit then
+                attempt = attempt + 1
+                if attempt >= 5 then
+                    getBot():disconnect()
+                    sleep(60000)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(math.random(10000,15000))
+                    end
+                    attempt = 0
+                end
+            end
+            if nuked then
+                local modified_str = string.gsub(getBot().custom_status, "|([^|]+|%d+)$", "")
+                getBot().custom_status = modified_str .. "|Joined|" .. os.time()
+                return {success = false,nukes = true,playerLimits = false,wrongpass = false}
+            end
+            if playerLimit then
+                local modified_str = string.gsub(getBot().custom_status, "|([^|]+|%d+)$", "")
+                getBot().custom_status = modified_str .. "|Joined|" .. os.time()
+                return {success = false,nukes = false,playerLimits = true,wrongpass = false}
+            end
+        end
+    end
+    local attempt = 0
+    if id ~= "" and getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+        while getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 do
+            getBot():warp(world,id)
+            sleep(2000)
+            if getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    local modified_str = string.gsub(getBot().custom_status, "|([^|]+|%d+)$", "")
+                    getBot().custom_status = modified_str .. "|Joined|" .. os.time()
+                    return {success = false,nukes = false,playerLimits = false,wrongpass = true}
+                end
+            end
+        end
+    end
+    local modified_str = string.gsub(getBot().custom_status, "|([^|]+|%d+)$", "")
+    getBot().custom_status = modified_str .. "|Joined|" .. os.time()
+    return {success = true,nukes = false,playerLimits = false,wrongpass = false}
+end
+
+local function getCountLock()
+    local worldlock_count = 0
+    for _,item in pairs(getBot():getInventory():getItems()) do
+        if item.id == 242 then
+            worldlock_count = worldlock_count + item.count
+        elseif item.id == 1796 then
+            worldlock_count = worldlock_count + (100 * item.count)
+        end
+    end
+    return worldlock_count
+end
+
+local function internetValue()
+    local httpClient = HttpClient.new()
+    httpClient:setMethod(Method.get)
+    httpClient.url = "https://www.google.com/"
+    httpClient.headers["User-Agent"] = "Lucifer"
+    local httpResult = httpClient:request()
+    return httpResult.status
+end
+
+local function checkPlayerCount()
+    local client = HttpClient.new()
+    client:setMethod(Method.get)
+    client.url = 'https://growtopiagame.com/detail'
+    AmountPlayer = client:request().body:match([[{"online_user":"(%d+)"]])
+    return tonumber(AmountPlayer)
+end
+
+local function reconnect(world,id,x,y)
+    if getBot().status ~= 1 then
+        print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] - This bot is got disconnected!")
+        local attempt = 0
+        while getBot().status ~= 1 do
+            local internets = internetValue()
+            if internets ~= 0 then
+                local playerCount = checkPlayerCount()
+                local condition = false
+                if playerCount > 8000 then
+                    getBot():connect()
+                    sleep(35000)
+                    if getBot().status ~= 1 then
+                        if getBot().status == 3 or getBot().status == 4 then
+                            print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] - This bot is got banned!")
+                            removeBot()
+                        elseif getBot().status == 0 or getBot().status == BotStatus.http_block then
+                            attempt = attempt + 1
+                            if attempt >= 6 then
+                                print("[" .. getCurrentTime() .. "] - Alert: You might got an ercon.")
+                                sleep(60000 * 20)
+                                attempt = 0
+                            end
+                        end
+                    end
+                else
+                    print("[" .. getCurrentTime() .. "] - Alert: Server might currently down!")
+                    while true do
+                        local values = internetValue()
+                        if values ~= 0 then
+                            local playerCount = checkPlayerCount()
+                            if playerCount >= 8000 then
+                                break
+                            else
+                                sleep(30000)
+                            end
+                        else
+                            break
+                        end
+                    end
+                end
+            else
+                print("[" .. getCurrentTime() .. "] - Alert: There is currently an internet interruption occurring.")
+                
+                while true do
+                    local values = internetValue()
+                    if values ~= 0 then
+                        break
+                    else
+                        sleep(60000 * 2)
+                    end
+                end
+            end
+        end
+        getBot().move_range = 3
+        getBot().move_interval = 235
+        getBot().custom_status = "Reconnected|" .. os.time() .. "|None|0"
+        while getBot():isInWorld() do
+            getBot():leaveWorld()
+            sleep(5000)
+        end
+        enterWorld(world,id)
+        sleep(1000)
+        if x and y then
+            while not getBot():isInTile(x,y) do
+                getBot():findPath(x,y)
+                sleep(1000)
+            end
+        end
+        sleep(2000)
+    end
+end
+
+function convert()
+    local packet = GameUpdatePacket.new()
+    packet.type = 10
+    packet.int_data = 242
+    getBot():sendRaw(packet)
+end
+
+local function performActionTrade(world)
+    print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - The bot has started trading in " .. world)
+    print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - You have " .. left .. " worlds remaining.")
+    
+    local countLock = getCountLock()
+    
+    if getBot():getInventory():getItemCount(242) >= 100 then
+        while getBot():getInventory():getItemCount(242) >= 100 do
+            convert()
+            sleep(1000)
+        end
+    end
+    
+    while not tableStructure.isWorldLockWrenched do
+        for _,tile in pairs(getTiles()) do
+            if tile.fg == 242 then
+                getBot():wrench(tile.x,tile.y)
+                listenEvents(3)
+                tilex = tile.x
+                tiley = tile.y
+                
+                if getBot().status ~= 1 then
+                    resetStageAll()
+                    return performActionTrade(world)
+                end
+            end
+        end
+        sleep(50)
+    end
+    
+    while getBot():getInventory():getItemCount(1424) == 0 do
+        getBot():sendPacket(2, "action|dialog_return\ndialog_name|lock_edit\ntilex|".. tilex .. "|\ntiley|".. tiley .. "|\nbuttonClicked|getKey\n\ncheckbox_public|0\ncheckbox_disable_music|0\ntempo|100\ncheckbox_disable_music_render|0\ncheckbox_set_as_home_world|0\nminimum_entry_level|1")
+        listenEvents(3)
+        print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Sending retrieve packet.")
+        if getBot().status ~= 1 then
+            resetStageAll()
+            return performActionTrade(world)
+        end
+    end
+    if getBot().status ~= 1 then
+        resetStageAll()
+        return performActionTrade(world)
+    end
+        
+    print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Successfully retrieved the key.")
+    print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Trading player named " .. playerName:upper())
+    
+    local isTradeDone = false
+    
+    while not isTradeDone do
+    
+        if not tableStructure.isPlayerTraded then
+            while not tableStructure.isPlayerTraded do
+                local existed, netid = isExisting()
+                if existed == true then
+                    print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Sending Trade Packet.")
+                    getBot():say("/trade " .. playerName)
+                    getBot():sendPacket(2, "action|trade_started\n|netid|".. netid)
+                    listenEvents(3)
+                    if getBot().status ~= 1 then
+                        reconnect(world,"")
+                        resetStageAll()
+                        return performActionTrade(world)
+                    end
+                end
+                sleep(50)
+            end
+            print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Player successfully traded.")
+        end
+        
+        if not tableStructure.isPlayerTwoTraded and tableStructure.isPlayerTraded then
+            while not tableStructure.isPlayerTwoTraded do
+                listenEvents(1)
+                if tableStructure.isTradeCanceled == true then
+                    resetStageHalf()
+                    break
+                end
+                if getBot().status ~= 1 then
+                    reconnect(world,"")
+                    resetStageAll()
+                    return performActionTrade(world)
+                end
+            end
+        end
+
+        if tableStructure.isPlayerTraded and tableStructure.userBalanceLock < 10 and tableStructure.isPlayerTwoTraded then
+            while tableStructure.userBalanceLock < 75 do
+                listenEvents(2)
+                if tableStructure.isTradeCanceled == true then
+                    resetStageHalf()
+                    break
+                end
+                if getBot().status ~= 1 then
+                    reconnect(world,"")
+                    resetStageAll()
+                    return performActionTrade(world)
+                end
+            end
+        end
+
+        if not tableStructure.isWorldKeyPlaced and tableStructure.userBalanceLock >= 10 and tableStructure.isPlayerTwoTraded and tableStructure.isPlayerTraded then
+            while not tableStructure.isWorldKeyPlaced do
+                getBot():sendPacket(2, "action|mod_trade\nitemID|1424")
+                listenEvents(3)
+                if not tableStructure.isWorldKeyPlaced then
+                    getBot():say("lag wait 25 secs")
+                    listenEvents(25)
+                end
+                print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Sending place packet.")
+                if getBot().status ~= 1 then
+                    reconnect(world,"")
+                    resetStageAll()
+                    return performActionTrade(world)
+                end
+                if tableStructure.isTradeCanceled == true then
+                    resetStageHalf()
+                    break
+                end
+            end
+        end
+
+        if not tableStructure.isBotAlreadyAccepted and tableStructure.userBalanceLock >= 75 and tableStructure.isWorldKeyPlaced then
+            local attempt = 0
+            while not tableStructure.isBotAlreadyAccepted and tableStructure.userBalanceLock >= 75 do
+                getBot():sendPacket(2, "action|trade_accept\nstatus|1")
+                listenEvents(3)
+                attempt = attempt + 1
+                if getBot().status ~= 1 then
+                    reconnect(world,"")
+                    resetStageAll()
+                    return performActionTrade(world)
+                end
+                if tableStructure.isTradeCanceled == true then
+                    resetStageHalf()
+                    break
+                end
+                print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Sending first trade accept packet.")
+                if tableStructure.isFinalDialogAppeared == true then
+                    tableStructure.isBotAlreadyAccepted = true
+                end
+                if tableStructure.userBalanceLock >= 75 then
+                    if tableStructure.isBotAlreadyAccepted == true then
+                        if not tableStructure.isFinalDialogAppeared then
+                            tableStructure.isBotWaitingToAppeared = true
+                            while not tableStructure.isFinalDialogAppeared do
+                                listenEvents(2)
+                                print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Waiting to appeared final dialog.")
+                                if tableStructure.isDealChanged then
+                                    tableStructure.isBotAlreadyAccepted = false
+                                    tableStructure.isDealChanged = false
+                                    break
+                                end
+                                if tableStructure.isTradeCanceled == true then
+                                    resetStageHalf()
+                                    break
+                                end
+                            end
+                            tableStructure.isBotWaitingToAppeared = false
+                        end
+                        if not tableStructure.finalConfirmation and tableStructure.isBotAlreadyAccepted and tableStructure.isFinalDialogAppeared then
+                            while not tableStructure.isTradeCanceled do
+                                getBot():sendPacket(2, "action|dialog_return\ndialog_name|trade_confirm\nbuttonClicked|back")
+                                listenEvents(3)
+                                if getBot().status ~= 1 then
+                                    reconnect(world,"")
+                                    resetStageAll()
+                                    return performActionTrade(world)
+                                end
+                            end
+                        end
+                    else
+                        getBot():say("wait lag")
+                        listenEvents(1)
+                        if attempt == 2 then
+                            print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Removing accept status.")
+                            getBot():sendPacket(2, "action|trade_accept\nstatus|0")
+                            listenEvents(3)
+                        end
+                    end
+                else
+                    tableStructure.isBotAlreadyAccepted = false
+                end
+                if tableStructure.isTradeCanceled == true then
+                    resetStageHalf()
+                    break
+                end
+            end
+        end
+
+        if not isFinalStageAccepted and tableStructure.isBotAlreadyAccepted and tableStructure.isWorldKeyPlaced then
+            print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Bot accepting the final stage of the trade")
+            while not tableStructure.isFinalStageAccepted do
+                getBot():sendPacket(2, "action|dialog_return\ndialog_name|trade_confirm\nbuttonClicked|accept")
+                listenEvents(2)
+                if getBot().status ~= 1 then
+                    reconnect(world,"")
+                    resetStageAll()
+                    return performActionTrade(world)
+                end
+                if tableStructure.isTradeCanceled == true then
+                    resetStageHalf()
+                    break
+                end
+            end
+        end
+        
+        if tableStructure.isFinalStageAccepted and tableStructure.isBotAlreadyAccepted and tableStructure.isWorldKeyPlaced then
+            print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Waiting to accept.")
+            while countLock == getCountLock() do
+                listenEvents(2)
+                if tableStructure.isTradeCanceled == true then
+                    resetStageHalf()
+                    break
+                end
+                if getBot().status ~= 1 then
+                    reconnect(world,"")
+                    resetStageAll()
+                    return performActionTrade(world)
+                end
+            end
+        end
+
+        if getCountLock() > countLock then
+            print("[" .. getCurrentTime() .. "] [" .. getBot().name:upper() .. "] [" .. getBot().index .. "] - Trade successfully finished.")
+            resetStageAll()
+            break
+        end
+
+        sleep(30)
+    end
+end
+
+local function removeContent(str)
+    for i, world in pairs(contentList) do
+        if world:lower() == str:lower() then
+            table.remove(contentList,i)
+        end
+    end
+end
+
+local function write_world(filename)
+    local file = io.open(filename, "w")
+    for _, line in ipairs(contentList) do
+        file:write(line .. "\n")
+    end
+    file:close()
+end
+
+for i,worlds in pairs(worldList) do
+    enterWorld(worlds,"")
+    sleep(500)
+    if isBotOwner() then
+        performActionTrade(worlds)
+        sleep(1000)
+        removeContent(worlds)
+        sleep(1000)
+        write_world(getBot().name:upper())
+        sleep(200)
+        getBot():say(worldList[i + 1])
+        sleep(500)
+        getBot():say("/msg " .. playerName .. " " .. worldList[i + 1])
+        left = (#worldList == left and #worldList or #worldList - i)
+    else
+        removeContent(worlds)
+        sleep(1000)
+        write_world(getBot().name:upper())
+        sleep(200)
+    end
+end
