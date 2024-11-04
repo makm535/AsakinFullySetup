@@ -1,0 +1,85 @@
+worldList = {}
+worldDoorID = ""
+filename = ""
+
+function saveContent(world,bolean)
+    local file = io.open(filename,"a+")
+    file:write(world .. "|" .. (bolean == 1 and "NOT NUKED" or bolean == 2 and "NUKED OR LEVEL LIMIT" or bolean == 3 and "Nakalimutan ang password") .. "\n")
+    file:close()
+end
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString()
+        if message:find("created too many worlds") or message:find("That world is inaccessible") or message:find("Players lower than level") then
+            nuked = true
+            unlistenEvents()
+        end
+    end
+end)
+
+function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        if getBot():isInWorld() then
+            while getBot():isInWorld() do
+                getBot():leaveWorld()
+                sleep(math.random(5500,6000))
+            end
+        end
+        local attempt = 0
+        local counter = 0
+        while not getBot():isInWorld(world:upper() .. (id and "|" .. id or "")) do
+            getBot():warp(world:upper(), (id or ""))
+            listenEvents(math.random(4,6))
+            if getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+                counter = counter + 1
+                if counter >= 3 then
+                    forgot = true
+                    return
+                end
+            end
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(6000, 10000))
+                if getBot().status ~= 1 then
+                    sleep(math.random(20000,40000))
+                end
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    getBot().auto_reconnect = false
+                    getBot():disconnect()
+                    sleep(60000 * 15)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(math.random(6000,10000))
+                        if getBot().status ~= 1 then
+                            sleep(math.random(20000,40000))
+                        end
+                    end
+                    attempt = 0
+                end
+            end
+            if nuked then
+                return
+            end
+        end
+    end
+end
+
+for _,world in pairs(worldList) do
+    enterWorld(world,worldDoorID)
+    sleep(100)
+    if not nuked then
+        if forgot then
+            saveContent(world,3)
+            forgot = false
+        else
+            saveContent(world,1)
+        end
+    else
+        saveContent(world,2)
+        nuked = false
+    end
+end

@@ -1,0 +1,191 @@
+targetVendWorlds = {
+"9WOQ",
+"QMUZ",
+"BUKI",
+"JJN",
+"75B9",
+"D6F6",
+"EO7T",
+"ZG6V"
+}
+
+vendWorldDoorID = ""
+
+targetItemID = 102
+itemPerWorldLock = 200
+countBuyPerBatch = 1
+
+storageItemSeed = "GRINDLANGG"
+storageSeedDoorID = "GRINDR"
+
+-------------------------------------------------------------------
+itemSeedID = targetItemID
+
+local function canFindPath(x,y)
+    return (x == getBot().x and y == getBot().y and true or #getBot():getPath(x,y) > 0 and true or false)
+end
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString()
+        if message:find("That world is inaccessible") then
+            nuked = true
+            unlistenEvents()
+        elseif message:find("Players lower than level") then
+            playerLimit = true
+            unlistenEvents()
+        end
+    end
+end)
+
+local function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        nuked = false
+        playerLimit = false
+        local attempt = 0
+        while not getBot():isInWorld(world:upper()) do
+            getBot():warp(world)
+            listenEvents(5)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(10000,15000))
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked and not playerLimit then
+                attempt = attempt + 1
+                if attempt >= 5 then
+                    getBot():disconnect()
+                    sleep(60000 * 20)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(math.random(10000,15000))
+                    end
+                    attempt = 0
+                end
+            end
+            if nuked then
+                return {success = false,nukes = true,playerLimits = false,wrongpass = false}
+            end
+            if playerLimit then
+                return {success = false,nukes = false,playerLimits = true,wrongpass = false}
+            end
+        end
+    end
+    local attempt = 0
+    if id ~= "" and getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+        while getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 do
+            getBot():warp(world,id)
+            sleep(2000)
+            if getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    return {success = false,nukes = false,playerLimits = false,wrongpass = true}
+                end
+            end
+        end
+    end
+    return {success = true,nukes = false,playerLimits = false,wrongpass = false}
+end
+
+local function checkTile(x,y,num)
+    local count = 0
+    for _,object in pairs(getObjects()) do
+        if math.floor((object.x + 10) / 32) == x and math.floor((object.y + 10) / 32) == y then
+            count = count + object.count
+        end
+    end
+    if count <= (3800 - num) then
+        return true
+    end
+    return false
+end
+
+local function storeSeed()
+    local result = enterWorld(storageItemSeed,storageSeedDoorID)
+    sleep(200)
+    if result.success == true then
+        local tileposx, tileposy = getBot().x, getBot().y
+        for tiley = tileposy, 0, -1 do
+            for tilex = tileposx, (tileposx + 10), 1 do
+                if getInfo(getBot():getWorld():getTile(tilex,tiley).fg).collision_type == 0 and canFindPath(tilex-1,tiley) then
+                    local tileDropable = checkTile(tilex,tiley,getBot():getInventory():getItemCount(itemSeedID))
+                    if tileDropable == true then
+                        while not getBot():isInTile(tilex-1,tiley) do
+                            getBot():findPath(tilex-1,tiley)
+                            sleep(500)
+                            getBot():setDirection(false)
+                            sleep(500)
+                        end
+                        while getBot():getInventory():getItemCount(itemSeedID) > 0 and checkTile(tilex,tiley,getBot():getInventory():getItemCount(itemSeedID)) do
+                            getBot():drop(itemSeedID,getBot():getInventory():getItemCount(itemSeedID))
+                            sleep(3000)
+                        end
+                    end
+                end
+                if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                    break
+                end
+            end
+            if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                break
+            end
+        end
+    else
+        removeBot()
+    end
+end
+
+local function isThereLeft()
+    for _,tile in pairs(getBot():getWorld():getTiles()) do
+        if (tile.fg == 2978 or tile.fg == 9268) and canFindPath(tile.x,tile.y) then
+            local itemID = tile:getExtra().id
+            local price = tile:getExtra().item_price
+            if itemID == targetItemID and price == (itemPerWorldLock * -1) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+for _,targetVendWorld in pairs(targetVendWorlds) do
+    while true do
+        enterWorld(targetVendWorld,vendWorldDoorID)
+        sleep(1000)
+        local haveStock = isThereLeft()
+        if haveStock == true then
+            if getBot():getInventory():getItemCount(242) >= countBuyPerBatch or getBot():getInventory():getItemCount(1796) > 0 then
+                for _,tile in pairs(getBot():getWorld():getTiles()) do
+                    if (tile.fg == 2978 or tile.fg == 9268) and canFindPath(tile.x,tile.y) then
+                        local itemID = tile:getExtra().id
+                        local price = tile:getExtra().item_price
+                        if itemID == targetItemID and price == (itemPerWorldLock * -1) then
+                            while not getBot():isInTile(tile.x,tile.y) do
+                                getBot():findPath(tile.x,tile.y)
+                                sleep(1500)
+                            end
+                        
+                            sleep(1000)
+                            getBot():buy(targetItemID,(itemPerWorldLock * countBuyPerBatch),countBuyPerBatch)
+                            sleep(6000)
+                        end
+                    end
+                    if getBot():getInventory():getItemCount(targetItemID) >= (itemPerWorldLock * countBuyPerBatch) then
+                        break
+                    end
+                end
+                if getBot():getInventory():getItemCount(targetItemID) >= (itemPerWorldLock * countBuyPerBatch) then
+                    storeSeed()
+                    sleep(100)
+                    local result = enterWorld(targetVendWorld,vendWorldDoorID)
+                    sleep(1000)
+                    if not result then getBot():stopScript() end
+                end
+            else
+                getBot():stopScript()
+                sleep(1000)
+            end
+        else
+            break
+        end
+    end
+end

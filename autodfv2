@@ -1,0 +1,94 @@
+-- =========== [[ AUTO DIRTFARM BY 0X56 ]] ============ --
+
+storageItems = "" -- Storage where the bot takes items.
+storageDoorID = "" -- Door ID for the storage.
+worldTakePlat = "" -- World where the bot takes plat.
+worldPlatDoorID = "" -- Door ID for the world.
+webhookLinkInfo = "" -- Webhook link for saving world info
+
+-- =============== Dont Touch It Bro! ================ --
+world = getBot():getWorld()
+worldList = {}
+inventory = getBot():getInventory()
+getBot().move_range = 1
+getBot().move_interval = 80
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString()
+        if message:find("created too many worlds") or message:find("That world is inaccessible") or message:find("Players lower than level") then
+            nuked = true
+            unlistenEvents()
+        end
+    end
+end)
+
+function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        if getBot():isInWorld() then
+            while getBot():isInWorld() do
+                getBot():leaveWorld()
+                sleep(math.random(5500,6000))
+            end
+        end
+        local attempt = 0
+        while not getBot():isInWorld(world:upper() .. (id and "|" .. id or "")) do
+            getBot():warp(world:upper(), (id or ""))
+            listenEvents(math.random(4,6))
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(6000, 10000))
+                if getBot().status ~= 1 then
+                    sleep(math.random(20000,40000))
+                end
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    getBot().auto_reconnect = false
+                    getBot():disconnect()
+                    sleep(60000 * restPotatoMinutes)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(math.random(6000,10000))
+                        if getBot().status ~= 1 then
+                            sleep(math.random(20000,40000))
+                        end
+                    end
+                    attempt = 0
+                end
+            end
+            if nuked then
+                return
+            end
+        end
+    end
+end
+
+function clearSide()
+    local function clearColumn(column)
+        for tiley = 24, 53 do
+            if world:getTile(column, tiley).bg == 14 or world:getTile(column + 1, tiley).bg == 14 then
+                findPath(column, tiley - 1)
+                while world:getTile(column, tiley).bg == 14 do
+                    getBot():hit(column, tiley)
+                    sleep(180)
+                end
+                while world:getTile(column + 1, tiley).bg == 14 do
+                    getBot():hit(column + 1, tiley)
+                    sleep(180)
+                end
+                getBot():collect(3,10)
+            end
+        end
+    end
+    clearColumn(0)
+    clearColumn(98)
+end
+
+function platform()
+    if inventory:getItemCount(102) < 52 and (world.growscan:getTiles()[102] or 0) < 52 then
+        enterWorld(worldTakePlat,worldPlatDoorID)
+        sleep(500)
+        
+end

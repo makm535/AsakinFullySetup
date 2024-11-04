@@ -1,0 +1,32 @@
+3300 STEEL BLOCK SEED FORMULA
+
+Blue Berry Seed Recipe: 
+
+Poppy Seed = 3200 seed / 32 world lock
+Rose Seed = 3200 seed / 16 world lock
+
+Cave Background Seed = 3200 / 16 world lock
+Grass Seed = 3200 / 21 world lock
+
+Total Cost: 85 world lock
+
+-------------------------------------------
+
+Red Block Seed Recipe:
+
+Brick Seed = 3200 seed / 21 world lock
+Lava Seed = 3200 seed / 16 world lock
+
+Total Cost: 37 world lock
+
+-------------------------------------------
+
+Portcullis Seed Recipe:
+
+Door Seed = 3200 seed / 32 world lock
+Window Seed = 3200 seed / 45.7 world lock
+
+Danger Sign Seed = 2450 seed / 37.6 world lock
+Rock Background Seed = 2450 seed / 16.3 world lock
+
+Total Cost: 131.6 world lock

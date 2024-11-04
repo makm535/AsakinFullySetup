@@ -1,0 +1,417 @@
+--[[
+    Script Developer: Daike no shori
+    Script Type: Rotation
+    Script Version: 1.0
+]]
+
+local RotationManagement = {
+
+    worldList = ""
+
+    botPerWorld = 2
+
+    farmPerBatch = 10
+
+    showAnimation = false
+
+    loopCount = 0
+
+    autoFillSeed = false
+
+    ignorePlant = false
+
+}
+
+local StorageManagement = {
+-- List all the worlds and their corresponding door IDs where the bot will save all packs.
+    storagePack = {"WORLD|ID"},
+-- Input the ID of the patokan or marker where the bot should save the packs. If you prefer not to use a patokan or marker, type 0.
+    patokanPack = 0,
+-- List all the worlds and their corresponding door IDs where the bot will save all seeds.
+    storageSeed = {"STORECRAWL1|NOPE","STORECRAWL2|NOPE","STORECRAWL3|NOPE","STORECRAWL4|NOPE"},
+-- Input the ID of the patokan or marker where the bot should save the seeds. If you prefer not to use a patokan or marker, type 0.
+    patokanSeed = 0,
+-- Type 'true' if you want to randomly pick a world storage. If not, type 'false'.
+    randomlyPick = false,
+-- Please specify the maximum number of seeds you want to save per world. Note: 'randomlySave' should be set to false.
+    maxSeedPerWorld = 0
+}
+
+local PickaxeManagement = {
+-- Set the variable 'autoTakePick' to true if you want the bot to automatically take a pick and wear, and false if you do not.
+    autoTakePick = false,
+-- Type the storage world name of the pickaxe world where the bot is going to take the pick.
+    storagePickaxe = "",
+-- Type the storage world doorid of the pickaxe world where the bot is going to take the pick.
+    storagePickDoorID = ""
+}
+
+local RestManagement = {
+-- Type "true" if you want the bot to rest at specific time
+    autoRestBot = false,
+-- List all the specific hours when the bot will rest; if a specific time comes up, it will rest.
+    restHourList = {1,3,7,9},
+-- How many minutes will the bot rest?
+    durationRest = 10,
+-- Type "true" if you want the bot to disconnect from the game while resting
+    disconnectWhenRest = false
+}
+
+local PackManagement = {
+-- Set the variable 'autoBuyPack' to 'true' if you want to purchase a pack from the store, and 'false' if not.
+    autoBuyPack = false,
+-- Type the name of the pack you want to buy in the store.
+    purchaseDebug = "",
+-- Type the price of the pack you want to buy in the store.
+    purchasePrice = 2000,
+-- Type all the pack item IDs in the table list.
+    purchaseItemID = {},
+-- Set the maximum number of gems before the bot will purchase a pack. Once this limit is reached, the bot will buy the pack.
+    maximumLimitGem = 10000
+}
+
+local DelayManagement = {
+-- Delay Harvest Options: NORMAL = SLIGHTLY SLOW | MEDIUM = FAIRLY FAST | ULTRA = VERY FAST
+    delayHarvest = "MEDIUM",
+-- Delay Plant Options: NORMAL = SLIGHTLY SLOW | MEDIUM = FAIRLY FAST | ULTRA = VERY FAST
+    delayPlant = "MEDIUM",
+-- Delay Punch Opti    ons: NORMAL = SLIGHTLY SLOW | MEDIUM = FAIRLY FAST | ULTRA = VERY FAST
+    delayPunch = "MEDIUM",
+-- Delay Place Options: NORMAL = SLIGHTLY SLOW | MEDIUM = FAIRLY FAST | ULTRA = VERY FAST
+    delayPlace = "ULTRA",
+-- How many seconds interval delay for each reconnection
+    delayReconnect = 20,
+-- How many seconds delay joining in a specific world
+    delayJoinWorld = 7
+}
+
+------------------ Dont Touch ------------------
+local blacklistTile = {}
+local storageSeedIndex = 1
+local randomStorageSeed = math.random(1,#StorageManagement.storageSeed)
+local world = getBot():getWorld()
+local inventory = getBot():getInventory()
+
+local delayPlant = (getBot():getPing() > 1 and getBot():getPing() <= 39 and 130 or getBot():getPing() > 39 and getBot():getPing() <= 70 and 150 or 170)
+local delayPlant2 = (getBot():getPing() > 1 and getBot():getPing() <= 39 and 160 or getBot():getPing() > 39 and getBot():getPing() <= 70 and 175 or 190)
+
+local function growscan(bool,itemID)
+    return (bool and (world.growscan:getTiles()[itemID] or 0) or (world.growscan:getObjects()[itemID]or 0))
+end
+
+local function canFindPath(x,y)
+    return (x == getBot().x and y == getBot().y and true or #getBot():getPath(x,y) > 0 and true or false)
+end
+
+local function autoDetect()
+    local item = {}
+    local count = 0
+    for _,tile in pairs(getBot():getWorld():getTiles()) do
+        if tile.fg % 2 ~= 0 then
+            if item[tile.fg] then
+                item[tile.fg].count = item[tile.fg].count + 1
+            else
+                item[tile.fg] = {count = 1, farmable = tile.fg}
+            end
+        end
+    end
+    for _,item in pairs(item) do
+        if item.count > count then
+            count = item.count
+            itemSeedID = item.farmable
+            itemBlockID = item.farmable - 1
+        end
+    end
+end
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString()
+        if message:find("That world is inaccessible") then
+            nuked = true
+            unlistenEvents()
+        elseif message:find("Players lower than level") then
+            playerLimit = true
+            unlistenEvents()
+        end
+    elseif variant:get(0):getString() == "OnTextOverlay" then
+        message = variant:get(1):getString()
+        if message:find("You can't drop that here") then
+            isAreaIsFull = true
+        end
+    end
+end)
+
+local function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        nuked = false
+        playerLimit = false
+        local attempt = 0
+        while not getBot():isInWorld(world:upper()) do
+            getBot():warp(world)
+            listenEvents(DelayManagement.delayJoinWorld - 2)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(10000,15000))
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked and not playerLimit then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    getBot():disconnect()
+                    sleep(60000 * potato)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(math.random(10000,15000))
+                    end
+                    attempt = 0
+                end
+            end
+            if nuked then
+                return {success = false,nukes = true,playerLimits = false,wrongpass = false}
+            end
+            if playerLimit then
+                return {success = false,nukes = false,playerLimits = true,wrongpass = false}
+            end
+        end
+    end
+    local attempt = 0
+    if id ~= "" and getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+        while getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 do
+            getBot():warp(world,id)
+            sleep(2000)
+            if getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    return {success = false,nukes = false,playerLimits = false,wrongpass = true}
+                end
+            end
+        end
+    end
+    return {success = true,nukes = false,playerLimits = false,wrongpass = false}
+end
+
+local function isBlacklistedTile(world,x,y)
+    for index,blacklist in pairs(blacklistTile) do
+        if index == world then
+            for _,blacklists in pairs(blacklist) do
+                if blacklists.x == x and blacklists.y == y then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function seperateString(str)
+    local worlds, ids = str:match("([^|]+)|([^|]+)")
+    return {world = worlds, id = ids}
+end
+
+local function checkTile(x,y,num)
+    local count = 0
+    for _,object in pairs(getObjects()) do
+        if math.floor((object.x + 8) / 32) == x and math.floor((object.y + 8) / 32) == y then
+            count = count + object.count
+        end
+    end
+    if count <= (4000 - num) then
+        return true
+    end
+    return false
+end
+
+local function storeSeed()
+    while getBot():getInventory():getItemCount(itemSeedID) > 0 do
+        local worldResult = seperateString((StorageManagement.randomlyPick and StorageManagement.storageSeed[randomStorageSeed] or StorageManagement.storageSeed[storageSeedIndex]))
+        local result = enterWorld(worldResult.world,worldResult.id)
+        sleep(200)
+        if result.success == true then
+            local countObject = (getBot():getWorld().growscan:getObjects()[itemSeedID] or 0)
+            if countObject < StorageManagement.maxSeedPerWorld then
+                if StorageManagement.patokanSeed == 0 then
+                    local tileposx, tileposy = getBot().x, getBot().y
+                    for tiley = tileposy, 0, -1 do
+                        for tilex = tileposx, (tileposx + 10), 1 do
+                            local isBlacklisted = isBlacklistedTile(worldResult.world,tilex,tiley)
+                            if not isBlacklisted and getInfo(getBot():getWorld():getTile(tilex,tiley).fg).collision_type == 0 and canFindPath(tilex-1,tiley) then
+                                local tileDropable = checkTile(tilex,tiley,getBot():getInventory():getItemCount(itemSeedID))
+                                if tileDropable == true then
+                                    while not getBot():isInTile(tilex-1,tiley) do
+                                        getBot():findPath(tilex-1,tiley)
+                                        sleep(500)
+                                        getBot():setDirection(false)
+                                        sleep(500)
+                                    end
+                                    isAreaIsFull = false
+                                    while getBot():getInventory():getItemCount(itemSeedID) > 0 do
+                                        getBot():drop(itemSeedID,getBot():getInventory():getItemCount(itemSeedID))
+                                        listenEvents(3)
+                                        if isAreaIsFull then
+                                            if blacklistTile[worldResult.world] then
+                                                table.insert(blacklistTile[worldResult.world],{x = tilex, y = tiley})
+                                            else
+                                                blacklistTile[worldResult.world] = {}
+                                                table.insert(blacklistTile[worldResult.world],{x = tilex, y = tiley})
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                            if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                                break
+                            end
+                        end
+                        if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                            break
+                        end
+                    end
+                else
+                    for _,tile in pairs(world:getTiles()) do
+                        if tile.fg == StorageManagement.patokanSeed or tile.bg == StorageManagement.patokanSeed then
+                            local isBlacklisted = isBlacklistedTile(worldResult.world,tile.x,tile.y)
+                            if not isBlacklisted and getInfo(getBot():getWorld():getTile(tile.x,tile.y).fg).collision_type == 0 and canFindPath(tile.x-1,tile.y) then
+                                local tileDropable = checkTile(tile.x,tile.y,getBot():getInventory():getItemCount(itemSeedID))
+                                if tileDropable == true then
+                                    while not getBot():isInTile(tile.x-1,tile.y) do
+                                        getBot():findPath(tile.x-1,tile.y)
+                                        sleep(500)
+                                        getBot():setDirection(false)
+                                        sleep(500)
+                                    end
+                                    isAreaIsFull = false
+                                    while getBot():getInventory():getItemCount(itemSeedID) > 0 do
+                                        getBot():drop(itemSeedID,getBot():getInventory():getItemCount(itemSeedID))
+                                        listenEvents(3)
+                                        if isAreaIsFull then
+                                            if blacklistTile[worldResult.world] then
+                                                table.insert(blacklistTile[worldResult.world],{x = tilex, y = tiley})
+                                            else
+                                                blacklistTile[worldResult.world] = {}
+                                                table.insert(blacklistTile[worldResult.world],{x = tilex, y = tiley})
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                            if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                                break
+                            end
+                        end
+                    end
+                end
+                if getBot():getInventory():getItemCount(itemSeedID) > 0 then
+                    if not StorageManagement.randomlyPick then
+                        if storageSeedIndex ~= #StorageManagement.storageSeed then
+                            storageSeedIndex = storageSeedIndex + 1
+                        else
+                            print("[" .. getBot().name .. "] Please provide enough storage world then re-execute the script")
+                            getBot():stopScript()
+                        end
+                    else
+                        if #StorageManagement.storageSeed > 1 then
+                            table.remove(StorageManagement.storageSeed,randomStorageSeed)
+                            randomStorageSeed = math.random(1,#StorageManagement.storageSeed)
+                        else
+                            print("[" .. getBot().name .. "] Please provide enough storage world then re-execute the script")
+                            getBot():stopScript()
+                        end
+                    end
+                end
+            else
+                if not StorageManagement.randomlyPick then
+                    if storageSeedIndex ~= #StorageManagement.storageSeed then
+                        storageSeedIndex = storageSeedIndex + 1
+                    else
+                        print("[" .. getBot().name .. "] Please provide enough storage world then re-execute the script")
+                        getBot():stopScript()
+                    end
+                else
+                    if #StorageManagement.storageSeed > 1 then
+                        table.remove(StorageManagement.storageSeed,randomStorageSeed)
+                        randomStorageSeed = math.random(1,#StorageManagement.storageSeed)
+                    else
+                        print("[" .. getBot().name .. "] Please provide enough storage world then re-execute the script")
+                        getBot():stopScript()
+                    end
+                end
+            end
+        else
+            if not StorageManagement.randomlyPick then
+                if storageSeedIndex ~= #StorageManagement.storageSeed then
+                    storageSeedIndex = storageSeedIndex + 1
+                else
+                    print("[" .. getBot().name .. "] Please provide enough storage world then re-execute the script")
+                    getBot():stopScript()
+                end
+            else
+                if #StorageManagement.storageSeed > 1 then
+                    table.remove(StorageManagement.storageSeed,randomStorageSeed)
+                    randomStorageSeed = math.random(1,#StorageManagement.storageSeed)
+                else
+                    print("[" .. getBot().name .. "] Please provide enough storage world then re-execute the script")
+                    getBot():stopScript()
+                end
+            end
+        end
+    end
+end
+
+local function getNumberBot(n)
+    return (n - 1) % RotationManagement.botPerWorld + 1
+end
+
+local function changeDelay(range,interval)
+    if getBot().move_range ~= range or getBot().move_interval ~= interval then
+        getBot().move_range = range
+        getBot().move_interval = interval
+    end
+end
+
+local function plant(world,id)
+    if DelayManagement.delayPlant == "MEDIUM" then
+        for tiley = (1 + (4 * getNumberBot(getBot().index)))-4, 53, (4 * botPerWorld) do
+            for tilex = 1, 97, 2 do
+                
+
+
+if PickaxeManagement.autoTakePick == true and inventory:getItemCount(98) == 0 then
+    local result = enterWorld(PickaxeManagement.storagePickaxe,PickaxeManagement.storagePickDoorID)
+    sleep(math.random(200,400))
+    if result.success == true then
+        while inventory:getItemCount(98) == 0 do
+            for _,obj in pairs(world:getObjects()) do
+                if obj.id == 98 then
+                    getBot():findPath(math.floor((obj.x + 10) / 32)-1,math.floor(obj.y / 32))
+                    sleep(math.random(200,400))
+                    getBot():collectObject(obj.oid,3)
+                    sleep(math.random(400,500))
+                    if inventory:getItemCount(98) > 0 then
+                        break
+                    end
+                end
+            end
+            sleep(1000)
+        end
+        local ex = getBot().x
+        local ye = getBot().y
+        while not getBot():isInTile(ex-1,ye) do
+            getBot():findPath(ex-1,ye)
+            sleep(math.random(200,400))
+            getBot():setDirection(false)
+            sleep(500)
+        end
+        while inventory:getItemCount(98) > 1 do
+            getBot():drop(98,inventory:getItemCount(98)-1)
+            sleep(math.random(2500,3500))
+        end
+        while not inventory:getItem(98).isActive do
+            getBot():wear(98)
+            sleep(math.random(2500,3500))
+        end
+    else
+        getBot():stopScript()
+    end
+end
+
+storeSeed()

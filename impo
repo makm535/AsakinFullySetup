@@ -1,0 +1,27 @@
+local ip = "142.173.198."
+local port = 6530
+local credential = "U5yLE9Cg2U:bJTp41RzSs"
+
+for i = 1, 256 do
+    local proxy = ip .. i .. ":" .. port+i .. ":" .. credential
+    local proxy_manager = getProxyManager()
+    proxy_manager:addProxy(proxy) -- Adding new proxy.
+end
+
+data_id = [[
+hoqexlxtbg@gmail.com:v!mfch8B
+dmfnsqewwf@gmail.com:CQiyr#17
+ddfnzlboqb@gmail.com:qH6v3Kj!
+dewbucanme@gmail.com:Yt!G1La2
+xxclaoplgt@gmail.com:jOk@m0I#
+ovvrkrfpwh@gmail.com:SBIjbb6@
+ynycegfxyl@gmail.com:oez&K4bD
+zzvmsbrfct@gmail.com:ebP*0Cl8
+utlfqizvjh@gmail.com:*y36&Ux$
+yswegogbuc@gmail.com:V+TvDBF4
+]]
+
+for str in string.gmatch(data_id, "([^\r\n]+)") do
+    local email, password = str:gsub(" ", ""):match("([^|]+):(.+)")
+    addUbiBot(email, password, "", true)
+end

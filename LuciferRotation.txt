@@ -1,0 +1,649 @@
+--[[
+    Script Type: Lucifer Rotation Script
+    Created By: Daike no shori
+    Script Version: 1.0.0
+]]
+
+local moveRange = 6
+local moveInterval = 235
+local showAnimation = false
+
+-- Farm Settings
+local filePathFarm = "hm.txt"
+local farmPerBot = 2
+
+-- Storage Settings
+local filePathSeed = ""
+local filePathPack = ""
+
+-- Fossil Setting
+local takeFossil = false
+local storageTool = ""
+local storageFossil = ""
+
+-- Pack Settings
+local packDebug = ""
+local packPrice = 0
+local packItemID = {}
+local packGemLimit = 0
+
+-- Pickaxe Settings
+local autoTakePick = true
+local storagePickaxe = "daikepick"
+local pickaxeDoorID = "pick"
+
+-- Resting Settings
+local autoRest = false
+local restDuration = 300
+local restSpecificHour = false
+local restListHours = {1,2,3,4,6,8,12,15,18,21,23}
+local restOnBuyWorld = false
+local sendMessage = false
+
+-- Optional Settings
+local changeSkin = false
+local sendWebhook = false
+local sendRandomChat = false
+local listRandomText = {"how are you?"}
+local webhookLink = ""
+local webhookMsgID = ""
+
+-- Delay Settings
+local delayDrop = 3000
+local delayPlant = 195
+local delayBreak = 195
+local delayHarvest = 190
+
+------------------ Dont Touch ------------------
+local worldFarmList = {}
+local worldStorageSeed = {}
+getBot().legit_mode = showAnimation
+getBot().move_range = moveRange
+getBot().move_interval = moveInterval
+getBot().auto_reconnect = false
+getBot().custom_status = "Reconnected|0|Joined"
+
+local function getQuotient(num, thread)
+    return math.ceil(num / thread)
+end
+
+local function getItemCount(itemID)
+    return getBot():getInventory():getItemCount(itemID)
+end
+
+local function isPathFindable(x, y)
+    return (getBot():isInTile(x, y) or #getBot():getPath(x, y) > 0)
+end
+
+local function isEquiped(itemID)
+    return getBot():getInventory():getItem(itemID).isActive
+end
+
+local function logToConsole(text)
+    getBot():getConsole():append(text)
+end
+
+local function seperateString(str)
+    local world, id = str:match("([^|]+)|([^|]+)")
+    return {world = world, id = id}
+end
+
+local function split_lines(input)
+    local lines = {}
+    for line in input:gmatch("[^\r\n]+") do
+        table.insert(lines, line)
+    end
+    return lines
+end
+
+local outputFarm = split_lines(read(filePathFarm))
+local outputLinesFarm = {}
+
+for _, line in ipairs(outputFarm) do
+    if line:find("|") then
+        table.insert(outputLinesFarm, line)
+    end
+end
+
+if #outputLinesFarm >= (math.ceil(getBot().index / 1) * farmPerBot) then
+    for i, farm in pairs(outputLinesFarm) do
+        if getQuotient(i, farmPerBot) == getBot().index then
+            table.insert(worldFarmList, farm)
+        end
+    end
+else
+    print("please provide enough farm, fix it and re-execute!")
+    getBot():stopScript()
+end
+
+local function waitForCondition(interval, max, condition)
+    local sleepCounter = 0
+    while condition() and sleepCounter < max do
+        sleep(interval)
+        sleepCounter = sleepCounter + interval
+    end
+    return sleepCounter
+end
+
+local function detectFarmable()
+    local item = {}
+    local count = 0
+    for _,tile in pairs(getBot():getWorld():getTiles()) do
+        if tile.fg % 2 ~= 0 then
+            if item[tile.fg] then
+                item[tile.fg].count = item[tile.fg].count + 1
+            else
+                item[tile.fg] = {count = 1, farmable = tile.fg}
+            end
+        end
+    end
+    for _,item in pairs(item) do
+        if item.count > count then
+            count = item.count
+            farmableSeedID = item.farmable
+            farmableBlockID = item.farmable - 1
+        end
+    end
+end
+
+local function getWorldStatus(status)
+    return (status.nuked and "is nuked" or status.wrongID and "is wrong id" or status.playerLimit and "has player limit")
+end
+
+local function warpCondition()
+    local tableIndex = {}
+    local currentIndex = 0
+    local proxy = getBot():getProxy().ip
+    local joining = 0
+    local queueNumber = 0
+
+    for i, bot in pairs(getBots()) do
+        if bot:getProxy().ip == proxy then
+            table.insert(tableIndex, i)
+        end
+    end
+
+    if not getBot().custom_status:find("Joining") then
+        for _,index in pairs(tableIndex) do
+            if getBot(index).custom_status:find("Joining") then
+                joining = joining + 1
+            end
+        end
+
+        queueNumber = joining + 1
+        local original_str = getBot().custom_status
+        local randoms, strToRemove = string.match(original_str, "Reconnected|(%d+)|(.+)")
+        local str_result = string.gsub(original_str,strToRemove, "")
+        getBot().custom_status = str_result .. "Joining_" .. queueNumber
+                
+    else
+        queueNumber = string.match(getBot().custom_status,"Joining_(%d+)")
+    end
+
+    if queueNumber == 1 then return true end
+
+    for _,index in pairs(tableIndex) do
+        if getBot(index).custom_status:find("Joining_" .. (queueNumber-1)) then
+            return false
+        end
+    end
+
+    return true
+end
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString()
+        if message:find("That world is inaccessible") then
+            nuked = true
+            unlistenEvents()
+        elseif message:find("Players lower than level") then
+            playerLimit = true
+            unlistenEvents()
+        end
+    end
+end)
+
+local function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        nuked = false
+        playerLimit = false
+        local attempt = 0
+        while not warpCondition() do
+            sleep(2000)
+        end
+        while not getBot():isInWorld(world:upper()) do
+            getBot():warp(world)
+            listenEvents(8)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(10000,15000))
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked and not playerLimit then
+                attempt = attempt + 1
+                if attempt >= 5 then
+                    logToConsole("Server is lag cant enter")
+                    logToConsole("Resting for 8 minutes")
+                    getBot():disconnect()
+                    sleep(60000 * 8)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(math.random(10000,15000))
+                    end
+                    attempt = 0
+                end
+            end
+            if nuked then
+                local original_str = getBot().custom_status
+                local randoms, strToRemove = string.match(original_str, "Reconnected|(%d+)|(.+)")
+                local str_result = string.gsub(original_str,strToRemove, "")
+                getBot().custom_status = str_result .. "Joined"
+                return {success = false, nuked = true, playerLimit = false, wrongID = false}
+            end
+            if playerLimit then
+                local original_str = getBot().custom_status
+                local randoms, strToRemove = string.match(original_str, "Reconnected|(%d+)|(.+)")
+                local str_result = string.gsub(original_str,strToRemove, "")
+                getBot().custom_status = str_result .. "Joined"
+                return {success = false,nuked = false, playerLimit = true, wrongID = false}
+            end
+        end
+    end
+    local attempt = 0
+    if id ~= "" and getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+        while getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 do
+            getBot():warp(world,id)
+            sleep(2000)
+            if getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    local original_str = getBot().custom_status
+                    local randoms, strToRemove = string.match(original_str, "Reconnected|(%d+)|(.+)")
+                    local str_result = string.gsub(original_str,strToRemove, "")
+                    getBot().custom_status = str_result .. "Joined"
+                    return {success = false, nuked = false, playerLimit = false, wrongID = true}
+                end
+            end
+        end
+    end
+    local original_str = getBot().custom_status
+    local randoms, strToRemove = string.match(original_str, "Reconnected|(%d+)|(.+)")
+    local str_result = string.gsub(original_str,strToRemove, "")
+    getBot().custom_status = str_result .. "Joined"
+    return {success = true, nuked = false, playerLimit = false, wrongID = false}
+end
+
+local function checkTile(x,y,num)
+    local count = 0
+    for _,object in pairs(getObjects()) do
+        if math.floor((object.x + 8) / 32) == x and math.floor((object.y + 8) / 32) == y then
+            count = count + object.count
+        end
+    end
+    if count <= (3800 - num) then
+        return true
+    end
+    return false
+end
+
+local outputSeed = split_lines(read(filePathSeed))
+local outputLinesSeed = {}
+
+for _, line in ipairs(outputSeed) do
+    if line:find("|") then
+        table.insert(outputLinesSeed, line)
+    end
+end
+
+for i, farm in pairs(outputLinesSeed) do
+    table.insert(worldStorageSeed, farm)
+end
+
+local function depositSeed()
+    while not getItemCount(farmableSeedID) == 0 do
+        local randomIndex = math.random(1,#worldStorageSeed)
+        local worldSeperate = seperateString(worldStorageSeed[randomIndex])
+        local result = enterWorld(worldSeperate.world,worldSeperate.id)
+        sleep(200)
+        if result.success == true then
+            local tileposx, tileposy = getBot().x, getBot().y
+            for tiley = tileposy, 0, -1 do
+                for tilex = tileposx, (tileposx + 15), 1 do
+                    if getInfo(getTile(tilex,tiley).fg).collision_type == 0 and isPathFindable(tilex-1,tiley) then
+                        local tileDropable = checkTile(tilex,tiley,getItemCount(farmableSeedID))
+                        if tileDropable == true then
+                            while not getBot():isInTile(tilex-1,tiley) do
+                                getBot():findPath(tilex-1,tiley)
+                                sleep(500)
+                                getBot():setDirection(false)
+                                sleep(500)
+                            end
+                            while getItemCount(farmableSeedID) > 0 do
+                                getBot():drop(itemSeedID,getItemCount(farmableSeedID))
+                                sleep(3000)
+                            end
+                        end
+                    end
+                    if getItemCount(farmableSeedID) == 0 then
+                        break
+                    end
+                end
+                if getItemCount(farmableSeedID) == 0 then
+                    break
+                end
+            end
+        else
+            local worldStatus = getWorldStatus(result)
+            print("Storage seed named " .. worldStatus)
+            logToConsole("Storage seed named " .. worldStatus)
+            logToConsole("Removing " .. worldSeperate.world .. " from the list")
+            table.remove(worldStorageSeed,randomIndex)
+        end
+    end
+end
+
+local function isPlantable(x,y)
+    local tile = getTile(x,y + 1)
+    if not tile.fg then return false end
+    local collision = getInfo(tile.fg).collision_type
+    return (collision == 1 or collision == 2)
+end
+
+local function checkEmpty(x,y)
+    for i = 1, 5 do
+        if getBot():getWorld():getTile((x-3)+i,y).fg == 0 and isPlantable((x-3)+i,y) and getBot():getWorld():hasAccess((x-3)+i,y) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+local function plant(world,id)
+    logToConsole("planting trees")
+    for tiley = 1, 53, 2 do
+        for tilex = 3, 98, 5 do
+             if checkEmpty(tilex,tiley) then
+                if canFindPath(tilex,tiley) then
+                    local countPath = #getBot():getPath(tilex,tiley)
+                    if countPath <= 5 then
+                        getBot().move_range = 6
+                        getBot().move_interval = 180
+                    else
+                        getBot().move_range = moveRange
+                        getBot().move_interval = moveInterval
+                    end
+                    getBot():findPath(tilex,tiley)
+                    reconnect(world,id,tilex,tiley)
+                    while checkEmpty(tilex,tiley) do
+                        for tiles = -2, 2, 1 do
+                            if getBot():getInventory():getItemCount(farmableSeedID) == 0 then
+                                logToConsole("Done planting trees.")
+                                return true
+                            end
+                            if getBot():getWorld():getTile(tilex+tiles,tiley).fg == 0 and isPlantable(tilex+tiles,tiley) and getBot():getWorld():hasAccess(tilex+tiles,tiley) > 0 then
+                                getBot():place(getBot().x + tiles,getBot().y,farmableSeedID)
+                                sleep(delayPlant)
+                                reconnect(world,id,tilex,tiley)
+                            end
+                        end
+                    end
+                else
+                    for tiles = -2, 2, 1 do
+                        if getTile(tilex + tiles,tiley).fg == 0 then
+                            if canFindPath(tilex + tiles,tiley) and isPlantable(tilex+tiles,tiley) and getBot():getWorld():hasAccess(tilex+tiles,tiley) > 0 then
+                                if getBot():getInventory():getItemCount(farmableSeedID) == 0 then
+                                    logToConsole("Done planting trees.")
+                                    return true
+                                end
+                                local countPath = #getBot():getPath(tilex + tiles,tiley)
+                                if countPath <= 5 then
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 180
+                                else
+                                    getBot().move_range = moveRange
+                                    getBot().move_interval = moveInterval
+                                end
+                                getBot():findPath(tilex + tiles,tiley)
+                                reconnect(world,id,tilex,tiley)
+                                while getBot():getWorld():getTile(tilex+tiles,tiley).fg == 0 do
+                                    getBot():place(getBot().x,getBot().y,farmableSeedID)
+                                    sleep(delayPlant)
+                                    reconnect(world,id,tilex,tiley)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    logToConsole("Done planting trees.")
+    
+    if getBot():getInventory():getItemCount(itemSeedID) >= 100 then
+        depositSeed()
+        sleep(200)
+        local result = enterWorld(world,id)
+        sleep(200)
+        if not result.success then
+            local worldStatus = getWorldStatus(result)
+            print("Farm world named " .. worldStatus)
+            logToConsole("Farm world named " .. worldStatus)
+            return false
+        end
+    end
+    return true
+end
+
+function checkHarvest(x,y)
+    for i = 1, 5 do
+        if getBot():getWorld():getTile((x-3)+i,y).fg == itemSeedID and getBot():getWorld():getTile((x-3)+i,y):canHarvest() and getBot():getWorld():hasAccess((x-3)+i,y) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+local function harvest(world,id,target)
+    getBot().auto_collect = true
+    print("[" .. getBot().name:upper() .. "] Starting rotation.")
+
+    for tiley = 1, 53, 2 do
+        for tilex = 3, 98, 5 do
+            if checkHarvest(tilex, tiley) then
+                if canFindPath(tilex, tiley) then
+                    local countPath = #getBot():getPath(tilex,tiley)
+                    if countPath <= 5 then
+                        getBot().move_range = 6
+                        getBot().move_interval = 150
+                    else
+                        getBot().move_range = moveRange
+                        getBot().move_interval = moveInterval
+                    end
+                    getBot():findPath(tilex, tiley)
+                    reconnect(world, id, tilex, tiley)
+
+                    while checkHarvest(tilex, tiley) do
+                        for tiles = -2, 2, 1 do
+                            if getBot():getWorld():getTile(tilex + tiles, tiley).fg == itemSeedID and getTile(tilex + tiles, tiley):canHarvest() and getBot():getWorld():getTile(tilex + tiles,tiley).flags < 100 and getBot():getWorld():hasAccess(tilex + tiles, tiley) > 0 then
+                                getBot():hit(tilex + tiles, tiley)
+                                sleep(delay_Management.delayHarvest)
+                                reconnect(world, id, tilex, tiley)
+                            end
+                        end
+                    end
+
+                    if getBot():getInventory():getItemCount(itemSeedID-1) >= 170 then
+                        getBot().auto_collect = false
+                        getBot().move_range = moveRange
+                        getBot().move_interval = moveInterval
+                        pnb(world,id)
+                        sleep(500)
+                        if farm_Management.dontPlantSeed == false then
+                            local result = enterWorld(world,id)
+                            if result.success == true then
+                                anti_troll(tilex,tiley)
+                                sleep(100)
+                                if fire_Management.autoClearFire == true then
+                                    anti_fire()
+                                    sleep(100)
+                                end
+                                plant(world,id)
+                                sleep(500)
+                                if not getBot():isInWorld(world:upper()) then
+                                    local results = enterWorld(world,id)
+                                    if results.success == true then
+                                        sleep(100)
+                                    else
+                                        local statuss = (result.nukes == true and " got nuked" or result.playerLimits == true and " has player limit " or result.wrongpass == true and " is wrong doorID")
+                                        print("[WARNING ALERT!][ " .. getBot().name:upper() .. "] World named " .. world .. statuss)
+                                        return
+                                    end
+                                end
+                            else
+                                local status = (result.nukes == true and " got nuked" or result.playerLimits == true and " has player limit " or result.wrongpass == true and " is wrong doorID")
+                                print("[WARNING ALERT!][ " .. getBot().name:upper() .. "] World named " .. world .. status)
+                                return
+                            end
+
+                        else
+                            -- Store Seed Function
+                            sleep(500)
+                        end
+                        getBot().auto_collect = true
+                    end
+
+                else
+                    for tiles = -2, 2, 1 do
+                        if getTile(tilex + tiles, tiley).fg == itemSeedID then
+                            if canFindPath(tilex + tiles, tiley) and getTile(tilex + tiles, tiley):canHarvest() and getBot():getWorld():getTile(tilex + tiles,tiley).flags < 100 and getBot():getWorld():hasAccess(tilex + tiles, tiley) > 0 then
+                                local countPath = #getBot():getPath(tilex + tiles,tiley)
+                                if countPath <= 5 then
+                                    getBot().move_range = 6
+                                    getBot().move_interval = 150
+                                else
+                                    getBot().move_range = moveRange
+                                    getBot().move_interval = moveInterval
+                                end
+                                getBot():findPath(tilex + tiles, tiley)
+                                reconnect(world, id, tilex, tiley)
+
+                                while getBot():getWorld():getTile(tilex + tiles, tiley).fg == itemSeedID do
+                                    getBot():hit(tilex + tiles, tiley)
+                                    sleep(delay_Management.delayHarvest)
+                                    reconnect(world, id, tilex, tiley)
+                                end
+
+                                if getBot():getInventory():getItemCount(itemSeedID-1) >= 170 then
+                                    getBot().auto_collect = false
+                                    getBot().move_range = moveRange
+                                    getBot().move_interval = moveInterval
+                                    pnb(world,id)
+                                    sleep(500)
+                                    if farm_Management.dontPlantSeed == false then
+                                        local result = enterWorld(world,id)
+                                        if result.success == true then
+                                            anti_troll(tilex + tiles,tiley)
+                                            sleep(100)
+                                            if fire_Management.autoClearFire == true then
+                                                anti_fire()
+                                                sleep(100)
+                                            end
+                                            plant(world,id)
+                                            sleep(500)
+                                            if not getBot():isInWorld(world:upper()) then
+                                                local results = enterWorld(world,id)
+                                                if results.success == true then
+                                                    sleep(100)
+                                                else
+                                                    local statuss = (result.nukes == true and " got nuked" or result.playerLimits == true and " has player limit " or result.wrongpass == true and " is wrong doorID")
+                                                    print("[WARNING ALERT!][ " .. getBot().name:upper() .. "] World named " .. world .. statuss)
+                                                    return
+                                                end
+                                            end
+
+                                        else
+                                            local status = (result.nukes == true and " got nuked" or result.playerLimits == true and " has player limit " or result.wrongpass == true and " is wrong doorID")
+                                            print("[WARNING ALERT!][ " .. getBot().name:upper() .. "] World named " .. world .. status)
+                                            return
+                                        end
+
+                                    else
+                                        -- Store Seed Function
+                                        sleep(500)
+                                    end
+                                    getBot().auto_collect = true
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    pnb(world,id)
+    sleep(500)
+
+    if farm_Management.dontPlantSeed == false then
+        local result = enterWorld(world,id)
+        if result.success == true then
+            plant(world,id)
+            sleep(500)
+        else
+            local status = (result.nukes == true and " got nuked" or result.playerLimits == true and " has player limit " or result.wrongpass == true and " is wrong doorID")
+            print("[WARNING ALERT!][ " .. getBot().name:upper() .. "] World named " .. world .. status)
+        end
+
+    else
+        -- Store Seed Function
+        sleep(500)
+    end
+
+    getBot().auto_collect = false
+end
+
+
+if autoTakePick == true and (getItemCount(98) == 0 or not isEquiped(98)) then
+    local result = enterWorld(storagePickaxe,pickaxeDoorID)
+    sleep(math.random(200,400))
+    logToConsole("Taking Pickaxe")
+    if result.success == true then
+        while getItemCount(98) == 0 do
+            for _,obj in pairs(getObjects()) do
+                if obj.id == 98 then
+                    getBot():findPath(math.floor((obj.x + 10) / 32)-1,math.floor(obj.y / 32))
+                    sleep(math.random(200,400))
+                    getBot():collectObject(obj.oid,3)
+                    sleep(math.random(400,500))
+                    if getItemCount(98) > 0 then
+                        break
+                    end
+                end
+            end
+            sleep(1500)
+        end
+        local ex = getBot().x
+        local ye = getBot().y
+        while not getBot():isInTile(ex-1,ye) do
+            getBot():findPath(ex-1,ye)
+            sleep(math.random(200,400))
+            getBot():setDirection(false)
+            sleep(500)
+        end
+        while getItemCount(98) > 1 do
+            getBot():drop(98,getItemCount(98)-1)
+            sleep(math.random(2500,3500))
+        end
+        while not isEquiped(98) do
+            logToConsole("Wearing ickaxe")
+            getBot():wear(98)
+            sleep(math.random(2500,3500))
+        end
+        logToConsole("Succesfuly Take Pickaxe")
+    else
+        local worldStatus = getWorldStatus(result)
+        print("Storage pickaxe named " .. worldStatus)
+        logToConsole("Storage pickaxe named " .. worldStatus)
+        getBot():stopScript()
+    end
+end

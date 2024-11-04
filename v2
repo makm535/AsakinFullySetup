@@ -1,0 +1,543 @@
+-- ========== [[ AUTO DF GENTA BY 0X56 ]] ========== --
+
+worldList = {"lolanj174"} -- Write the list of the worlds you want to create df, if you don't want the auto-find feature.
+worldDoorID = nil -- ID associated with the world where the bot creates df.
+webhookLinkInfo = "" -- Link of the webhook
+
+platformID = 102 -- ID of the platform.
+worldPlatform = "Crawlstore1" -- Name of the world platform.
+worldPlatDoorID = "sigma" -- ID of the door associated with the world platform.
+
+breakRock = false -- Set to false if you don't want to break rocks.
+breakJammer = true -- Set to true if you want to break rocks after finishing creating df.
+autoFindWorld = false -- Set to true if you want the auto-find feature enabled.
+letterLength = 5 -- Length of the world name to be searched.
+withNumber = false -- Set to true if you want to find worlds with numbers in their names.
+
+autoSaveSeed = true -- Set to false if you don't want the seed to be automatically saved.
+worldSaveSeed = "crawlstore1" -- World storage seed to be saved.
+worldSeedDoorID = "sigma" -- ID of the door associated with the world seed.
+
+-- ============ [[ Dont Touch It Bro ]] ============ --
+toggleCheat(26,true)
+toggleCheat(4,true)
+
+function punch(x,y)
+    local packet = {}
+    packet.type = 3
+    packet.state = 2592
+    packet.value = 18
+    packet.punchx = x
+    packet.punchy = y
+    packet.x = (getLocal().pos.x)
+    packet.y = (getLocal().pos.y)
+    sendPacketRaw(false,packet)
+end
+
+function place(x,y,id)
+    local packet = {}
+    packet.type = 3
+    packet.value = id
+    packet.punchx = x
+    packet.punchy = y
+    packet.x = (getLocal().pos.x)
+    packet.y = (getLocal().pos.y)
+    sendPacketRaw(false,packet)
+end
+
+function collectRaw(object)
+    local packet = {}
+    packet.type = 11
+    packet.value = object.oid
+    packet.x = object.pos.x
+    packet.y = object.pos.y
+    sendPacketRaw(false,packet)
+end
+
+function collect(x,y)
+    for _,object in pairs(getWorldObject()) do
+        if math.floor((object.pos.x + 8) / 32) == x or math.floor((object.pos.y + 8) / 32) == y then
+            collectRaw(object)
+            sleep(10)
+        end
+    end
+end
+
+function findItem(id)
+    for _,item in pairs(getInventory()) do
+        if item.id == id then
+            return item.amount
+        end
+    end
+    return 0
+end
+
+function tableInventory()
+    local itemTable = {}
+    for i,item in pairs(getInventory()) do
+        itemTable[item.id] = {count = item.amount}
+    end
+    return itemTable
+end
+
+
+function announcement(text)
+    variant = {}
+    variant[0] = "OnTextOverlay"
+    variant[1] = "[`90X56`] " .. text
+    sendVariant(variant)
+end
+
+
+function clearInventory()
+    local inventory = tableInventory()
+    local trashList = {10,2914,5024,5026,5028,5030,5032,5034,5036,5038,5040,5042,5044}
+    for _,trash in pairs(trashList) do
+        if inventory[trash] and inventory[trash].count > 0 then
+            sendPacket(2, "action|trash\n|itemID|"..trash)
+            sendPacket(2, "action|dialog_return\ndialog_name|trash_item\nitemID|"..trash.."|\ncount|"..inventory[trash].count)
+            sleep(2000)
+        end
+    end
+    local trashList2 = {2,3,4,5,14,15,11}
+    for _,trash in pairs(trashList2) do
+        if inventory[trash] and inventory[trash].count > 195 then
+            if trash ~= 3 and trash ~= 5 and trash ~= 11 and trash ~= 15 then
+                sendPacket(2, "action|trash\n|itemID|"..trash)
+                sleep(200)
+                sendPacket(2, "action|dialog_return\ndialog_name|trash_item\nitemID|"..trash.."|\ncount|".. (trash == 2 and 20 or 100))
+                sleep(1500)
+            else
+                if not autoSaveSeed then
+                    sendPacket(2, "action|trash\n|itemID|"..trash)
+                    sleep(200)
+                    sendPacket(2, "action|dialog_return\ndialog_name|trash_item\nitemID|"..trash.."|\ncount|20")
+                    sleep(1500)
+                else
+                    storeSeed()
+                    return
+                end
+            end
+        end
+    end
+end
+
+function join(world,id)
+    if getWorld().name:upper() ~= world:upper() then
+        while getWorld().name:upper() ~= world:upper() do
+            sendPacket(3,"action|join_request\nname|"..world:upper().."\ninvitedWorld|0")
+            sleep(6000)
+        end
+        if id ~= nil then
+            while checkTile(math.floor(getLocal().pos.x / 32),math.floor(getLocal().pos.y / 32)).fg == 6 do
+                sendPacket(3,"action|join_request\nname|"..world:upper().."|"..id:upper().."\ninvitedWorld|0")
+                sleep(3000)
+            end
+        end
+    end
+end
+
+function checkObject(x,y,num)
+    local count = 0
+    for _,object in pairs(getWorldObject()) do
+        if math.floor((object.pos.x + 8) / 32) == x or math.floor((object.pos.y + 8) / 32) == y then
+            count = count + object.amount
+        end
+    end
+    if count <= (4000 - num) then
+        return true
+    end
+    return false
+end
+
+function storeSeed()
+    local world = getWorld().name
+    local lastex = math.floor(getLocal().pos.x / 32)
+    local lastey = math.floor(getLocal().pos.y / 32)
+    join(worldSaveSeed,worldSeedDoorID)
+    sleep(1000)
+    local ex = math.floor(getLocal().pos.x / 32)
+    local ye = math.floor(getLocal().pos.y / 32)
+    local item = {3,5,11,15}
+    for _,items in pairs(item) do
+        for tiley = ye, 0, -1 do
+            for tilex = ex, 99, 1 do
+                if checkTile(tilex-1,tiley).fg == 0 and checkTile(tilex,tiley).fg == 0 then
+                    if checkObject(tilex,tiley,findItem(items)) then
+                        while math.floor(getLocal().pos.x / 32) ~= (tilex - 1) or math.floor(getLocal().pos.y / 32) ~= tiley do
+                            findPath(tilex-1,tiley)
+                            sleep(600)
+                        end 
+                        while findItem(items) > 0 do
+                            sendPacket(2,"action|drop\n|itemID|"..items)
+                            sleep(1000)
+                            sendPacket(2,"action|dialog_return\ndialog_name|drop_item\nitemID|"..items.."|\ncount|".. findItem(items))
+                            sleep(1000)
+                        end
+                    end
+                end
+                if findItem(items) == 0 then
+                    break
+                end
+            end
+            if findItem(items) == 0 then
+                break
+            end
+        end
+    end
+    join(world)
+    sleep(500)
+    while math.floor(getLocal().pos.x / 32) ~= lastex or math.floor(getLocal().pos.y / 32) ~= lastey do
+        findPath(lastex,lastey)
+        sleep(1000)
+    end 
+end
+
+function clearSide()
+    local function clearColumn(column)
+        for tiley = 24, 53 do
+            if checkTile(column, tiley).bg == 14 or checkTile(column + 1, tiley).bg == 14 then
+                findPath(column, tiley - 1)
+                sleep(80)
+                while checkTile(column, tiley).bg == 14 do
+                    punch(column, tiley)
+                    sleep(180)
+                end
+                while checkTile(column + 1, tiley).bg == 14 do
+                    punch(column + 1, tiley)
+                    sleep(180)
+                end
+            end
+            collect(column,tiley)
+            collect(column+1,tiley)
+            clearInventory()
+        end
+    end
+    findPath(0,23)
+    sleep(500)
+    announcement("[`9Started To Clearing Side.`0]")
+    clearColumn(0)
+    findPath(98,23)
+    sleep(500)
+    clearColumn(98)
+    announcement("[`9Side Has Been Cleared.`0]")
+end
+
+function platform()
+    if findItem(platformID) < 52 then
+        announcement("[`9Taking Platform.`0]")
+        local world = getWorld().name
+        join(worldPlatform,worldPlatDoorID)
+        sleep(math.random(200,300))
+        while findItem(102) < 52 do
+            announcement("[`9Attempting To Take Platform.`0]")
+            for _,object in pairs(getWorldObject()) do
+                if object.id == platformID then
+                    findPath(math.floor((object.pos.x + 8) / 32)-1,math.floor(object.pos.y / 32))
+                    sleep(1000)
+                    collectRaw(object)
+                    sleep(500)
+                    if findItem(platformID) >= 52 then
+                        break
+                    end
+                end
+            end
+            sleep(2000)
+        end
+        join(world)
+        sleep(math.random(200,300))
+        announcement("[`9Done Take Platform.`0]")
+    end
+    announcement("[`9Started To Place Platforms.`0]")
+    for tiley = 2, 52, 2 do
+        if checkTile(1,tiley).fg == 0 then
+            findPath(0,tiley)
+            sleep(100)
+            while checkTile(1,tiley).fg == 0 do
+                place(1,tiley,platformID)
+                sleep(200)
+            end
+        end
+    end
+    for tiley = 2, 52, 2 do
+        if checkTile(98,tiley).fg == 0 then
+            findPath(99,tiley)
+            sleep(100)
+            while checkTile(98,tiley).fg == 0 do
+                place(98,tiley,platformID)
+                sleep(200)
+            end
+        end
+    end
+    announcement("[`9Done Place Platforms.`0]")
+end
+
+function clearDirt()
+    announcement("[`Started To Clear Dirts.`0]")
+    for tiley = 25, 53, 4 do
+        for tilex = 97, 2, -2 do
+            if checkTile(tilex,tiley).bg ~= 0 or checkTile(tilex-1,tiley).bg ~= 0 then
+                findPath(tilex+1,tiley)
+                sleep(100)
+                while checkTile(tilex,tiley).bg ~= 0 do
+                    punch(tilex,tiley)
+                    sleep(180)
+                end
+                while checkTile(tilex-1,tiley).bg ~= 0 do
+                    punch(tilex-1,tiley)
+                    sleep(180)
+                end
+                clearInventory()
+                collect(tilex,tiley)
+                collect(tilex-1,tiley)
+            end
+        end
+        if (tiley + 2) ~= 55 then
+            for tilex = 2, 97, 2 do
+                if checkTile(tilex,tiley+2).bg ~= 0 or checkTile(tilex+1,tiley+2).bg ~= 0 then
+                    findPath(tilex-1,tiley+2)
+                    sleep(100)
+                    while checkTile(tilex,tiley+2).bg ~= 0 do
+                        punch(tilex,tiley+2)
+                        sleep(180)
+                    end
+                    while checkTile(tilex+1,tiley+2).bg ~= 0 do
+                        punch(tilex+1,tiley+2)
+                        sleep(180)
+                    end
+                    clearInventory()
+                    collect(tilex,tiley+2)
+                    collect(tilex+1,tiley+2)
+                end
+            end
+        end
+    end
+    announcement("[`Done Clear All Dirts.`0]")
+end
+
+function clearLava()
+    announcement("[`9Clearing Lavas.`0]")
+    for tiley = 49, 53, 1 do
+        for tilex = 2, 97, 1 do
+            if checkTile(tilex,tiley).fg == 4 then
+                findPath(tilex,tiley-1)
+                sleep(100)
+                while checkTile(tilex,tiley).fg == 4 do
+                    punch(tilex,tiley)
+                    sleep(200)
+                end
+                collect(tilex,tiley)
+            end
+        end
+    end
+    announcement("[`9Done Clear Lavas.`0]")
+end
+
+function replaceLava()
+    announcement("[`9Replacing Lavas.`0]")
+    for tiley = 48, 52, 2 do
+        for tilex = 2, 97, 1 do
+            if checkTile(tilex,tiley).fg == 0 then
+                findPath(tilex,tiley-1)
+                sleep(100)
+                while checkTile(tilex,tiley).fg == 0 do
+                    place(tilex,tiley,2)
+                    sleep(190)
+                end
+            end
+        end
+    end
+    announcement("[`9Done Replace Lavas.`0]")
+end
+
+function plantFirst()
+    findPath(1,23)
+    sleep(500)
+    for tilex = 2, 25, 1 do
+        if checkTile(tilex,23).fg == 0 then
+            findPath(tilex,23)
+            sleep(100)
+            while checkTile(tilex,23).fg == 0 do
+                place(tilex,23,3)
+                sleep(190)
+            end
+        end
+    end
+    sleep(27000)
+end
+
+function plantHarvest(x,y)
+    while findItem(2) == 0 do
+        for tilex = 2, 25, 1 do
+            if getExtraTile(tilex,23).ready then
+                findPath(tilex,23)
+                sleep(100)
+                while checkTile(tilex,23).fg == 3 do
+                    punch(tilex,23)
+                    sleep(190)
+                end
+                collect(tilex,23)
+                if findItem(3) > 0 then
+                    while checkTile(tilex,23).fg == 0 do
+                        place(tilex,23,3)
+                        sleep(190)
+                    end
+                end
+            end
+            if findItem(2) > 180 then
+                break
+            end
+        end
+        sleep(1000)
+    end
+    while math.floor(getLocal().pos.x / 32) ~= x or math.floor(getLocal().pos.y / 32) ~= y do
+        findPath(x,y)
+        sleep(600)
+    end
+end
+
+function checkEmpty(x,y)
+    for i = 1, 5 do
+        if checkTile((x-3)+i,y).fg == 0 then
+            return true
+        end
+    end
+    return false
+end
+
+function takeDirtSeed()
+    local world = getWorld().name
+    if findItem(3) < 180 then
+        join(worldSaveSeed,worldSeedDoorID)
+        sleep(500)
+        while findItem(3) < 180  do
+            for _,object in pairs(getWorldObject()) do
+                if object.id == 3 then
+                    findPath(math.floor((object.pos.x + 8) / 32)-1,math.floor(object.pos.y / 32))
+                    sleep(1000)
+                    collectRaw(object)
+                    sleep(500)
+                    if findItem(3) >= 52 then
+                        break
+                    end
+                end
+            end
+            sleep(2000)
+        end
+        join(world)
+        sleep(math.random(200,300))
+    end
+end
+
+function placeDirt()
+    announcement("[`9Started To Place Dirt.`0]")
+    if autoSaveDirt then
+        takeDirtSeed()
+        sleep(1000)
+    end
+    for tiley = 22, 2, -4 do
+        for tilex = 4, 99, 5 do
+            if checkEmpty(tilex,tiley) then
+                findPath(tilex,tiley+1)
+                for i = 1, 5 do
+                    if (tilex-3)+i <= 97 then
+                        if findItem(2) == 0 then
+                            plantHarvest(tilex,tiley+1)
+                            sleep(190)
+                        end
+                        if checkTile((tilex-3)+i,tiley).fg == 0 then
+                            while checkTile((tilex-3)+i,tiley).fg == 0 do
+                                place((tilex-3)+i,tiley,2)
+                                sleep(190)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if (tiley - 2) ~= 0 then
+            for tilex = 99, 4, -5 do
+                if checkEmpty(tilex,tiley-2) then
+                    findPath(tilex,tiley-1)
+                    for i = 1, 5 do
+                        if (tilex-3)+i <= 97 then
+                            if findItem(2) == 0 then
+                                plantHarvest(tilex,tiley-1)
+                                sleep(190)
+                            end
+                            if checkTile((tilex-3)+i,tiley-2).fg == 0  then
+                                while checkTile((tilex-3)+i,tiley-2).fg == 0 do
+                                    place((tilex-3)+i,tiley-2,2)
+                                    sleep(190)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    announcement("[`9Done Place Dirts.`0]")
+end
+
+function finish()
+    for tilex = 2, 25, 1 do
+        if getExtraTile(tilex,23).ready then
+            findPath(tilex,23)
+            sleep(100)
+            while checkTile(tilex,23).fg == 3 do
+                punch(tilex,23)
+                sleep(190)
+            end
+            collect(tilex,23)
+            if findItem(3) > 0 then
+                while checkTile(tilex,23).fg == 0 do
+                    place(tilex,23,3)
+                    sleep(190)
+                end
+            end
+        end
+        if findItem(2) > 180 then
+            sendPacket(2, "action|trash\n|itemID|2")
+            sleep(200)
+            sendPacket(2, "action|dialog_return\ndialog_name|trash_item\nitemID|2|\ncount|"..findItem(2))
+            sleep(1500)
+        end
+    end
+    if breakJammer then
+        for tiley = 10, 53, 1 do
+            for tilex = 0, 99, 1 do
+                if checkTile(tiley,tilex).fg == 226 then
+                    findPath(tilex,tiley+1)
+                    sleep(100)
+                    while checkTile(tiley,tilex).fg == 226 do
+                        punch(tilex,tiley)
+                        sleep(190)
+                    end
+                end
+            end
+        end
+    end
+end
+
+AddHook("OnVarList","drop",function(variant,netid)
+    if variant[1]:find("drop?") or variant[1]:find("trash?") then
+        return true
+    end
+    return false
+end)
+
+if not autoFindWorld then
+    for _,world in pairs(worldList) do
+        join(world,worldDoorID)
+        sleep(1000)
+        clearSide()
+        platform()
+        clearDirt()
+        clearLava()
+        replaceLava()
+        plantFirst()
+        placeDirt()
+        finish()
+    end
+end

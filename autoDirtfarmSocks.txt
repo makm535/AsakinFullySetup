@@ -1,0 +1,1031 @@
+-- # @Auto Dirtfarm By Daike Store
+
+getBot().legit_mode = true
+getBot().move_range = 6
+getBot().move_interval = 235
+getBot().auto_reconnect = false
+
+local bot = {}
+local world = getBot():getWorld()
+local inventory = getBot():getInventory()
+
+if getBots()[1] then
+    bot[1] = {
+        worldList = {""},
+        findWorldBeforeStart = true,
+        letterLength = 5,
+        totalCountFind = 15,
+        findWithNumber = false,
+        foundFileName = getBot().name .. "_found",
+        finishFileName = getBot().name .. "_finish"
+    }
+end
+
+if getBots()[2] then
+    bot[2] = {
+        worldList = {""},
+        findWorldBeforeStart = true,
+        letterLength = 5,
+        totalCountFind = 15,
+        findWithNumber = false,
+        foundFileName = getBot().name .. "_found",
+        finishFileName = getBot().name .. "_finish"
+    }
+end
+
+if getBots()[3] then
+    bot[3] = {
+        worldList = {},
+        findWorldBeforeStart = true,
+        letterLength = 5,
+        totalCountFind = 15,
+        findWithNumber = false,
+        foundFileName = getBot().name .. "_found",
+        finishFileName = getBot().name .. "_finish"
+    }
+end
+
+if getBots()[4] then
+    bot[4] = {
+        worldList = {""},
+        findWorldBeforeStart = true,
+        letterLength = 15,
+        totalCountFind = 20,
+        findWithNumber = false,
+        foundFileName = getBot().name .. "_found",
+        finishFileName = getBot().name .. "_finish"
+    }
+end
+
+if getBots()[5] then
+    bot[5] = {
+        worldList = {},
+        findWorldBeforeStart = true,
+        letterLength = 5,
+        totalCountFind = 15,
+        findWithNumber = false,
+        foundFileName = getBot().name .. "_found",
+        finishFileName = getBot().name .. "_finish"
+    }
+end
+
+if getBots()[6] then
+    bot[6] = {
+        worldList = {""},
+        findWorldBeforeStart = true,
+        letterLength = 5,
+        totalCountFind = 15,
+        findWithNumber = false,
+        foundFileName = getBot().name .. "_found",
+        finishFileName = getBot().name .. "_finish"
+    }
+end
+
+if getBots()[7] then
+    bot[7] = {
+        worldList = {""},
+        findWorldBeforeStart = true,
+        letterLength = 5,
+        totalCountFind = 15,
+        findWithNumber = false,
+        foundFileName = getBot().name .. "_found",
+        finishFileName = getBot().name .. "_finish"
+    }
+end
+
+if getBots()[8] then
+    bot[8] = {
+        worldList = {},
+        findWorldBeforeStart = true,
+        letterLength = 5,
+        totalCountFind = 15,
+        findWithNumber = false,
+        foundFileName = getBot().name .. "_found",
+        finishFileName = getBot().name .. "_finish"
+    }
+end
+
+if getBots()[9] then
+    bot[9] = {
+        worldList = {""},
+        findWorldBeforeStart = true,
+        letterLength = 15,
+        totalCountFind = 20,
+        findWithNumber = false,
+        foundFileName = getBot().name .. "_found",
+        finishFileName = getBot().name .. "_finish"
+    }
+end
+
+if getBots()[10] then
+    bot[10] = {
+        worldList = {},
+        findWorldBeforeStart = true,
+        letterLength = 5,
+        totalCountFind = 15,
+        findWithNumber = false,
+        foundFileName = getBot().name .. "_found",
+        finishFileName = getBot().name .. "_finish"
+    }
+end
+
+local placePlatform = false
+local platformItemID = 102
+local storagePlatform = ""
+local storagePlatformID = ""
+
+local saveDicaItem = false
+local storageDica = ""
+local storageDicaID = ""
+
+local delayPlacing = 170
+local delayBreaking = 180
+
+local storageItem = ""
+local storageDoorID = ""
+
+----------------- Dont Touch ------------------
+local listWorld = {}
+local worldFound = {}
+local worldList = bot[getBot().index].worldList
+local findWorldBeforeStart = bot[getBot().index].findWorldBeforeStart
+local letterLength = bot[getBot().index].letterLength
+local totalCountFind = bot[getBot().index].totalCountFind
+local findWithNumber = bot[getBot().index].findWithNumber
+local foundFileName = bot[getBot().index].foundFileName
+local finishFileName = bot[getBot().index].finishFileName
+
+if not findWorldBeforeStart then
+    for _,worlds in pairs(worldList) do
+        table.insert(listWorld,worlds)
+    end
+end
+
+local function write(filename,text)
+    local file = io.open(filename, "a+")
+    file:write(text .. "\n")
+    file:close()
+end
+
+local function seperateStrings(str)
+    local growid, password = str:match("([^|]+)|([^|]+)")
+    return {name = growid, pass = password}
+end
+
+local function split_lines(input)
+    local lines = {}
+    for line in input:gmatch("[^\r\n]+") do
+        table.insert(lines, line)
+    end
+    return lines
+end
+
+function read_file(filename)
+    local file = io.open(filename, "r") -- Open the file in read mode
+    if not file then return nil end -- Return nil if the file couldn't be opened
+
+    local content = file:read("*a") -- Read the entire content of the file
+    file:close() -- Close the file
+
+    return content -- Return the content
+end
+
+local worldi = read_file(foundFileName)
+
+if worldi then
+    for _,worlds in pairs(split_lines(worldi)) do
+        table.insert(listWorld,worlds)
+    end
+end
+
+addEvent(Event.game_message, function(message)
+    if message:find("available|1") then
+        local world = message:match("world_name|(.+)")
+        table.insert(worldFound,world)
+    end
+end)
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString()
+        if message:find("That world is inaccessible") then
+            nuked = true
+            unlistenEvents()
+        elseif message:find("Players lower than level") then
+            playerLimit = true
+            unlistenEvents()
+        end
+    end
+end)
+
+local function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        nuked = false
+        playerLimit = false
+        local attempt = 0
+        while not getBot():isInWorld(world:upper()) do
+            getBot():warp(world)
+            listenEvents(5)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(10000,15000))
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked and not playerLimit then
+                attempt = attempt + 1
+                if attempt >= 5 then
+                    getBot():disconnect()
+                    sleep(60000 * 20)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(math.random(10000,15000))
+                    end
+                    attempt = 0
+                end
+            end
+            if nuked then
+                return {success = false,nukes = true,playerLimits = false,wrongpass = false}
+            end
+            if playerLimit then
+                return {success = false,nukes = false,playerLimits = true,wrongpass = false}
+            end
+        end
+    end
+    local attempt = 0
+    if id ~= "" and getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+        while getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 do
+            getBot():warp(world,id)
+            sleep(2000)
+            if getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    write("errorlogs.txt","[" .. getBot().index .. "][" .. getBot().name:upper() .. "] - Hindi makapasok sa " .. world:upper() .. "dahil mali ang password")
+                    return {success = false,nukes = false,playerLimits = false,wrongpass = true}
+                end
+            end
+        end
+    end
+    return {success = true,nukes = false,playerLimits = false,wrongpass = false}
+end
+
+local function reconnect(world,id,x,y)
+    if getBot().status ~= BotStatus.online then
+        local attempt = 0
+        sleep(60000 * 7)
+        while getBot().status ~= BotStatus.online do
+            getBot():connect()
+            sleep(13000)
+            if getBot().status ~= BotStatus.online then
+                if getBot().status == 3 or getBot().status == 4 then
+                    removeBot()
+                elseif getBot().status == BotStatus.offline or getBot().status == BotStatus.http_block then
+                    attempt = attempt + 1
+                    if attempt >= 4 then
+                        sleep(60000 * 12)
+                    end
+                end
+            end
+        end
+        while getBot():isInWorld() do
+            getBot():leaveWorld()
+            sleep(5000)
+        end
+        enterWorld(world,id)
+        sleep(1000)
+        if x and y then
+            while not getBot():isInTile(x,y) do
+                getBot():findPath(x,y)
+                sleep(1000)
+            end
+            sleep(2000)
+        end
+    end
+end
+
+function takeItem()
+    enterWorld(storageItem,storageDoorID)
+    sleep(1000)
+    local item = {{item = 242, count = totalCountFind - #listWorld},{item = 226, count = 1}}
+    for _,gamit in pairs(item) do
+        while inventory:getItemCount(gamit.item) < gamit.count do
+            for _,object in pairs(world:getObjects()) do
+                if object.id == gamit.item then
+                    reconnect(storageItem,storageDoorID,math.floor((object.x + 8) / 32),math.floor((object.y + 8) / 32))
+                    getBot():findPath(math.floor((object.x + 8) / 32),math.floor((object.y + 8) / 32))
+                    sleep(500)
+                    reconnect(storageItem,storageDoorID,math.floor((object.x + 8) / 32),math.floor((object.y + 8) / 32))
+                    getBot():collectObject(object.oid,5)
+                    sleep(1000)
+                    if inventory:getItemCount(gamit.item) >= gamit.count then
+                        while inventory:getItemCount(gamit.item) > gamit.count do
+                            getBot():drop(gamit.item,inventory:getItemCount(gamit.item)-gamit.count)
+                            sleep(3000)
+                            reconnect(storageItem,storageDoorID,math.floor((object.x + 8) / 32),math.floor((object.y + 8) / 32))
+                        end
+                        break
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function canFindPath(x,y)
+    return (x == getBot().x and y == getBot().y and true or #getBot():getPath(x,y) > 0 and true or false)
+end
+
+local function checkTile(x,y,num)
+    local count = 0
+    for _,object in pairs(getObjects()) do
+        if math.floor((object.x + 10) / 32) == x and math.floor((object.y + 10) / 32) == y then
+            count = count + object.count
+        end
+    end
+    if count <= (4000 - num) then
+        return true
+    end
+    return false
+end
+
+local function storeDica(worlds,id)
+    getBot().auto_collect = false
+    local result = enterWorld(storageDica,storageDicaID)
+    sleep(200)
+    local item = {3,15,5,11}
+    if result.success == true then
+        for _,itemSeedID in pairs(item) do
+            local tileposx, tileposy = getBot().x, getBot().y
+            for tiley = tileposy, 0, -1 do
+                for tilex = tileposx, (tileposx + 10), 1 do
+                    if getInfo(getBot():getWorld():getTile(tilex,tiley).fg).collision_type == 0 and canFindPath(tilex-1,tiley) then
+                        local tileDropable = checkTile(tilex,tiley,getBot():getInventory():getItemCount(itemSeedID))
+                        if tileDropable == true then
+                            while not getBot():isInTile(tilex-1,tiley) do
+                                getBot():findPath(tilex-1,tiley)
+                                sleep(500)
+                                getBot():setDirection(false)
+                                sleep(500)
+                            end
+                            while getBot():getInventory():getItemCount(itemSeedID) > 0 and checkTile(tilex,tiley,getBot():getInventory():getItemCount(itemSeedID)) do
+                                getBot():drop(itemSeedID,getBot():getInventory():getItemCount(itemSeedID))
+                                sleep(3000)
+                            end
+                        end
+                    end
+                    if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                        break
+                    end
+                end
+                if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                    break
+                end
+            end
+        end
+    end
+end
+
+function clearInventory(worlds)
+    local trashList = {4,10,2914,5024,5026,5028,5030,5032,5034,5036,5038,5040,5042,5044}
+    for _,trashs in pairs(trashList) do
+        if inventory:getItemCount(trashs) > 0 then
+            getBot():trash(trashs,inventory:getItemCount(trashs))
+            sleep(1000)
+        end
+    end
+    local trashList2 = {2,3,5,14,15,11}
+    for _,trashs in pairs(trashList2) do
+        if inventory:getItemCount(trashs) > 195 then
+            if trashs ~= 3 and trashs ~= 5 and trashs ~= 11 and trashs ~= 15 then
+                getBot():trash(trashs,(trashs == 2 and 20 or inventory:getItemCount(trashs)))
+                sleep(1000)
+            else
+                if not saveDicaItem then
+                    getBot():trash(trashs,20)
+                    sleep(1000)
+                else
+                    storeSeed()
+                    return
+                end
+            end
+        end
+    end
+end
+
+local function checkSide(x,y)
+    for i = 0, 1, 1 do
+        if world:getTile(x,y + i).bg == 14 or world:getTile(x + 1,y + i).bg == 14 then
+            return true
+        end
+    end
+    return false
+end
+
+local function clearSide(worlds)
+    getBot().auto_collect = true
+    sleep(200)
+    for tiley = 24, 53, 2 do
+        if checkSide(0,tiley) == true then
+            local countPath = #getBot():getPath(0,tiley-1)
+            if countPath <= 5 then
+                getBot().move_range = 6
+                getBot().move_interval = 10
+            else
+                getBot().move_range = 6
+                getBot().move_interval = 235
+            end
+            reconnect(worlds,0,tiley - 1)
+            while checkSide(0,tiley) == true do
+                for y = 0, 1 do
+                    if getBot().x ~= 0 or getBot().y ~= tiley - 1 then
+                        getBot():findPath(0,tiley - 1)
+                    end
+                    if world:getTile(0,tiley + y).bg == 14 then
+                        getBot():hit(0,tiley + y)
+                        sleep(delayBreaking)
+                        reconnect(worlds,"",0,tiley - 1)
+                    end
+                    if world:getTile(1,tiley + y).bg == 14 then
+                        getBot():hit(1,tiley + y)
+                        sleep(delayBreaking)
+                        reconnect(worlds,"",0,tiley - 1)
+                    end
+                end
+            end
+            clearInventory(worlds)
+        end
+    end
+    for tiley = 24, 53, 2 do
+        if checkSide(98,tiley) == true then
+            local countPath = #getBot():getPath(98,tiley-1)
+            if countPath <= 5 then
+                getBot().move_range = 6
+                getBot().move_interval = 10
+            else
+                getBot().move_range = 6
+                getBot().move_interval = 235
+            end
+            reconnect(worlds,"",98,tiley - 1)
+            while checkSide(98,tiley) == true do
+                for y = 0, 1 do
+                    if getBot().x ~= 98 or getBot().y ~= tiley - 1 then
+                        getBot():findPath(98,tiley - 1)
+                    end
+                    if world:getTile(98,tiley + y).bg == 14 then
+                        getBot():hit(98,tiley + y)
+                        sleep(delayBreaking)
+                        reconnect(worlds,"",98,tiley - 1)
+                    end
+                    if world:getTile(99,tiley + y).bg == 14 then
+                        getBot():hit(99,tiley + y)
+                        sleep(delayBreaking)
+                        reconnect(worlds,"",98,tiley - 1)
+                    end
+                end
+            end
+            clearInventory(worlds)
+        end
+    end
+    getBot().auto_collect = false
+    sleep(200)
+end
+
+function platform(worlds)
+    if inventory:getItemCount(102) < 52 then
+        enterWorld(storagePlatform,storagePlatformID)
+        sleep(200)
+        while inventory:getItemCount(102) < 52 do
+            for _,object in pairs(world:getObjects()) do
+                if object.id == 102 then
+                    getBot():findPath(math.floor((object.x + 8) / 32)-1,math.floor(object.y / 32))
+                    sleep(1000)
+                    reconnect(storagePlat,storageDoorID,math.floor((object.x + 8) / 32)-1,math.floor(object.y / 32))
+                    getBot():collectObject(object.oid, 3)
+                    sleep(500)
+                    reconnect(storagePlat,storageDoorID,math.floor((object.x + 8) / 32)-1,math.floor(object.y / 32))
+                    if inventory:getItemCount(102) >= 52 then
+                        break
+                    end
+                end
+            end
+        end
+        enterWorld(worlds,"")
+        sleep(200)
+    end
+    for tiley = 2, 52, 2 do
+        if world:getTile(1,tiley).fg == 0 then
+            local countPath = #getBot():getPath(0,tiley)
+            if countPath <= 5 then
+                getBot().move_range = 6
+                getBot().move_interval = 10
+            else
+                getBot().move_range = 6
+                getBot().move_interval = 235
+            end
+            getBot():findPath(0,tiley)
+            reconnect(worlds,"",0,tiley)
+            while world:getTile(1,tiley).fg == 0 do
+                getBot():place(1,tiley,102)
+                sleep(delayPlacing)
+                reconnect(worlds,"",0,tiley)
+            end
+        end
+    end
+    for tiley = 2, 52, 2 do
+        if world:getTile(98,tiley).fg == 0 then
+            local countPath = #getBot():getPath(99,tiley)
+            if countPath <= 5 then
+                getBot().move_range = 6
+                getBot().move_interval = 10
+            else
+                getBot().move_range = 6
+                getBot().move_interval = 235
+            end
+            getBot():findPath(99,tiley)
+            reconnect(world,"",99,tiley)
+            while world:getTile(98,tiley).fg == 0 do
+                getBot():place(98,tiley,102)
+                sleep(delayPlacing)
+                reconnect(worlds,"",99,tiley)
+            end
+        end
+    end
+end
+
+function checkDirt(x,y)
+    for tiley = -2, 2, 2 do
+        if world:getTile(x,y + tiley).bg ~= 0 then
+            return true
+        end
+    end
+    return false
+end
+
+function clearDirt(worlds)
+    getBot().auto_collect = true
+    sleep(200)
+    for tiley = 27, 51, 12 do
+        for tilex = 2, 97, 2 do
+            if checkDirt(tilex,tiley) == true or checkDirt(tilex + 1,tiley) then
+                local countPath = #getBot():getPath(tilex-1,tiley)
+                if countPath <= 6 then
+                    getBot().move_range = 6
+                    getBot().move_interval = 20
+                else
+                    getBot().move_range = 6
+                    getBot().move_interval = 235
+                end
+                reconnect(worlds,"",tilex - 1,tiley)
+                for ex = 0, 1, 1 do
+                    while checkDirt(tilex + ex,tiley) do
+                        if getBot().x ~= tilex - 1 or getBot().y ~= tiley then
+                            getBot():findPath(tilex - 1,tiley)
+                        end
+                        for i = -2, 2, 2 do
+                            if world:getTile(tilex + ex,tiley+i).bg ~= 0 then
+                                getBot():hit(tilex + ex,tiley+i)
+                                sleep(delayBreaking)
+                                reconnect(worlds,"",tilex - 1,tiley)
+                            end
+                        end
+                    end
+                end
+                clearInventory(worlds)
+            end
+        end
+        if (tiley + 6) ~= 57 then
+            for tilex = 97, 2, -2 do
+                if checkDirt(tilex,tiley + 6) or checkDirt(tilex - 1,tiley + 6) then
+                    local countPath = #getBot():getPath(tilex + 1,tiley + 6)
+                    if countPath <= 6 then
+                        getBot().move_range = 6
+                        getBot().move_interval = 20
+                    else
+                        getBot().move_range = 6
+                        getBot().move_interval = 235
+                    end
+                    reconnect(worlds,"",tilex + 1,tiley + 6)
+                    for ex = 0, -1, -1 do
+                        while checkDirt(tilex + ex,tiley + 6) do
+                            if getBot().x ~= tilex + 1 or getBot().y ~= tiley + 6 then
+                                getBot():findPath(tilex + 1,tiley + 6)
+                            end
+                            for i = 4, 8, 2 do
+                                if world:getTile(tilex + ex,tiley+i).bg ~= 0 then
+                                    getBot():hit(tilex + ex,tiley+i)
+                                    sleep(delayBreaking)
+                                    reconnect(worlds,"",tilex + 1,tiley + 6)
+                                end
+                            end
+                        end
+                    end
+                    clearInventory(worlds)
+                end
+            end
+        end
+    end
+    getBot().auto_collect = false
+    sleep(200)
+end
+
+function clearLava(worlds)
+    getBot().auto_collect = true
+    sleep(100)
+    for _,tile in pairs(world:getTiles()) do
+        if tile.fg == 4 then
+            local countPath = #getBot():getPath(tile.x,tile.y-1)
+            if countPath <= 6 then
+                getBot().move_range = 6
+                getBot().move_interval = 20
+            else
+                getBot().move_range = 6
+                getBot().move_interval = 235
+            end
+            getBot():findPath(tile.x,tile.y-1)
+            reconnect(worlds,"",tile.x,tile.y-1)
+            while world:getTile(tile.x,tile.y).fg ~= 0 do
+                getBot():hit(tile.x,tile.y)
+                sleep(190)
+                reconnect(worlds,"",tile.x,tile.y-1)
+            end
+            clearInventory(worlds)
+        end
+    end
+    getBot().auto_collect = false
+    sleep(100)
+end
+
+function replaceLava(worlds)
+    for tiley = 48, 52, 2 do
+        for tilex = 2, 97, 1 do
+            if world:getTile(tilex,tiley).fg == 0 then
+                local countPath = #getBot():getPath(tilex,tiley-1)
+                if countPath <= 6 then
+                    getBot().move_range = 6
+                    getBot().move_interval = 20
+                else
+                    getBot().move_range = 6
+                    getBot().move_interval = 235
+                end
+                getBot():findPath(tilex,tiley-1)
+                reconnect(worlds,"",tilex,tiley-1)
+                while world:getTile(tilex,tiley).fg == 0 do
+                    getBot():place(tilex,tiley,2)
+                    sleep(190)
+                    reconnect(worlds,"",tilex,tiley-1)
+                end
+                clearInventory(worlds)
+            end
+        end
+    end
+end
+
+function checkPlant(x,y)
+    for i = -2, 2, 1 do
+        if world:getTile(x + i,y).fg == 0 and inventory:getItemCount(3) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+function plantFirst(worlds)
+    for tilex = 3, 33, 5 do
+        if checkPlant(tilex,23) == true then
+            local countPath = #getBot():getPath(tilex,23)
+            if countPath <= 6 then
+                getBot().move_range = 6
+                getBot().move_interval = 20
+            else
+                getBot().move_range = 6
+                getBot().move_interval = 235
+            end
+            getBot():findPath(tilex,23)
+            reconnect(worlds,"",tilex,23)
+            while checkPlant(tilex,23) == true do
+                for i = -2, 2, 1 do
+                    if world:getTile(tilex + i,23).fg == 0 then
+                        getBot():place(tilex + i,23,3)
+                        sleep(190) 
+                        reconnect(worlds,"",tilex,23)
+                    end
+                end
+            end
+        end
+    end
+end
+
+function checkHarvest(x,y)
+    for i = -2, 2, 1 do
+        if world:getTile(x + i,y).fg == 3 then
+            return true
+        end
+    end
+    return false
+end
+
+function checkReady()
+    for tilex = 3, 33, 5 do
+        if world:getTile(tilex,23).fg == 3 and world:getTile(tilex,23):canHarvest() then
+            return true
+        end
+    end
+    return false
+end
+
+function plantHarvest(worlds,x,y)
+    getBot().auto_collect = true
+    sleep(100)
+    if not checkReady() then
+        while not checkReady() do
+            sleep(1000)
+        end
+    end
+    for tilex = 3, 33, 5 do
+        if checkHarvest(tilex,23) == true then
+            local countPath = #getBot():getPath(tilex,23)
+            if countPath <= 6 then
+                getBot().move_range = 6
+                getBot().move_interval = 20
+            else
+                getBot().move_range = 6
+                getBot().move_interval = 235
+            end
+            getBot():findPath(tilex,23)
+            reconnect(worlds,"",tilex,23)
+            while checkHarvest(tilex,23) == true do
+                for i = -2, 2, 1 do
+                    if world:getTile(tilex + i,23).fg == 3 then
+                        getBot():hit(tilex + i,23)
+                        sleep(190)
+                        reconnect(worlds,"",tilex,23)
+                    end
+                end
+            end
+            while checkPlant(tilex,23) == true do
+                for i = -2, 2, 1 do
+                    if inventory:getItemCount(3) > 0 then
+                        if world:getTile(tilex + i,23).fg == 0 then
+                            getBot():place(tilex + i,23,3)
+                            sleep(190) 
+                            reconnect(worlds,"",tilex,23)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    while not getBot():isInTile(x,y) do
+        local countPath = #getBot():getPath(x,y)
+        if countPath <= 6 then
+            getBot().move_range = 6
+            getBot().move_interval = 20
+        else
+            getBot().move_range = 6
+            getBot().move_interval = 235
+        end
+        getBot():findPath(x,y)
+        sleep(100)
+    end
+    getBot().auto_collect = false
+    sleep(100)
+end
+
+function checkEmpty(x,y)
+    for i = -2, 2, 1 do
+        if world:getTile(x + i,y).fg == 0 and (x + i) > 1 and (x + i) < 98 then
+            return true
+        end
+    end
+    return false
+end
+
+function placeDirt(worlds)
+    for tiley = 22, 2, -4 do
+        for tilex = 4, 99, 5 do
+            if checkEmpty(tilex,tiley) == true then
+                local countPath = #getBot():getPath(tilex,tiley + 1)
+                if countPath <= 6 then
+                    getBot().move_range = 6
+                    getBot().move_interval = 20
+                else
+                    getBot().move_range = 6
+                    getBot().move_interval = 235
+                end
+                getBot():findPath(tilex,tiley+1)
+                reconnect(worlds,"",tilex,tiley+1)
+                while checkEmpty(tilex,tiley) == true do
+                    for i = -2, 2, 1 do
+                        if world:getTile(tilex + i,tiley).fg == 0 and (tilex + i) > 1 and (tilex + i) < 98 then
+                            if inventory:getItemCount(2) == 0 then
+                                plantHarvest(worlds,tilex,tiley+1)
+                                sleep(100)
+                            end
+                            getBot():place(tilex + i,tiley,2)
+                            sleep(delayPlacing)
+                            reconnect(worlds,"",tilex,tiley+1)
+                        end
+                    end
+                end
+            end
+        end
+        if (tiley - 2) ~= 0 then
+            for tilex = 99, 4, -5 do
+                if checkEmpty(tilex,tiley-2) == true then
+                    local countPath = #getBot():getPath(tilex,tiley - 1)
+                    if countPath <= 6 then
+                        getBot().move_range = 6
+                        getBot().move_interval = 20
+                    else
+                        getBot().move_range = 6
+                        getBot().move_interval = 235
+                    end
+                    getBot():findPath(tilex,tiley-1)
+                    reconnect(worlds,"",tilex,tiley-1)
+                    while checkEmpty(tilex,tiley-2) == true do
+                        for i = -2, 2, 1 do
+                            if world:getTile(tilex + i,tiley-2).fg == 0 and (tilex + i) > 1 and (tilex + i) < 98 then
+                                if inventory:getItemCount(2) == 0 then
+                                    plantHarvest(worlds,tilex,tiley-1)
+                                    sleep(100)
+                                end
+                                getBot():place(tilex + i,tiley-2,2)
+                                sleep(delayPlacing)
+                                reconnect(worlds,"",tilex,tiley-1)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+function finish(worlds)
+    getBot().auto_collect = true
+    sleep(200)
+    if not checkReady() then
+        while not checkReady() do
+            sleep(1000)
+        end
+    end
+    for tilex = 3, 33, 5 do
+        if checkHarvest(tilex,23) == true then
+            local countPath = #getBot():getPath(tilex,23)
+            if countPath <= 6 then
+                getBot().move_range = 6
+                getBot().move_interval = 20
+            else
+                getBot().move_range = 6
+                getBot().move_interval = 235
+            end
+            getBot():findPath(tilex,23)
+            reconnect(worlds,"",tilex,23)
+            while checkHarvest(tilex,23) == true do
+                for i = -2, 2, 1 do
+                    if world:getTile(tilex + i,23).fg == 3 then
+                        getBot():hit(tilex + i,23)
+                        sleep(190)
+                        reconnect(worlds,"",tilex,23)
+                    end
+                end
+            end
+            if inventory:getItemCount(2) > 170 then
+                getBot():trash(2,inventory:getItemCount(2))
+                sleep(3000)
+                reconnect(worlds,"",tilex,23)
+            end
+        end
+    end
+    sleep(2000)
+    if inventory:getItemCount(2) > 170 then
+        getBot():trash(2,inventory:getItemCount(2))
+        sleep(3000)
+        reconnect(worlds,"")
+    end
+    sleep(3000)
+    getBot().auto_collect = false
+    for _,tile in pairs(world:getTiles()) do
+        if tile.fg == 226 then
+            getBot():findPath(tile.x,tile.y + 1)
+            reconnect(worlds,"",tile.x,tile.y+1)
+            while world:getTile(tile.x,tile.y).fg ~= 0 do
+                getBot():hit(tile.x,tile.y)
+                sleep(190)
+                reconnect(worlds,"",tile.x,tile.y+1)
+            end
+        end
+    end
+end
+
+local function generateWorld()
+    local name = ""
+    for i = 1, letterLength do
+        name = name .. string.char(math.random(97,122))
+    end
+    return string.upper(name)
+end
+
+print(#listWorld)
+
+if #listWorld < totalCountFind then
+    if (inventory:getItemCount(242) < (totalCountFind - #listWorld) or inventory:getItemCount(226) < 1) then
+        takeItem()
+        sleep(1000)
+    end
+end
+
+if findWorldBeforeStart then
+    if getBot():isInWorld() then
+        while getBot():isInWorld() do
+            getBot():leaveWorld()
+            sleep(8000)
+        end
+    end
+    if #listWorld < totalCountFind then
+        while #worldFound < (totalCountFind - #listWorld) + 5 do
+            getBot():sendPacket(3, "action|validate_world\nname|" .. generateWorld())
+            listenEvents(2)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(15000)
+            end
+        end
+    end
+end
+
+function isTakenLocked()
+    for _,tile in pairs(getTiles()) do
+        name = string.lower(getInfo(tile.fg).name)
+        if name then
+            if name:find("lock") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+if findWorldBeforeStart then
+    for _,worlds in pairs(worldFound) do
+        if #listWorld < totalCountFind then
+            local result = enterWorld(worlds,"")
+            if result.success == true then
+                if not isTakenLocked() then
+                    while world:getTile(getBot().x,getBot().y-1).fg == 0 do
+                        getBot():place(getBot().x,getBot().y-1,242)
+                        sleep(1000)
+                        reconnect(worlds,"")
+                    end
+                    table.insert(listWorld,worlds:upper())
+                    write(foundFileName,worlds:upper())
+                end
+            end
+        end
+    end
+end
+
+for _,worlds in pairs(listWorld) do
+    local worlde = read_file(finishFileName)
+    worldes = (worlde and worlde or "")
+    if not worldes:find(worlds:upper()) then
+        enterWorld(worlds,"")
+        sleep(1000)
+        while world:getTile(getBot().x+1,getBot().y-1).fg == 0 do
+            getBot():place(getBot().x+1,getBot().y-1,226)
+            sleep(1000)
+            reconnect(worlds,"")
+        end
+        while world:getTile(getBot().x+1,getBot().y-1).flags < 64 do
+            getBot():hit(getBot().x+1,getBot().y-1)
+            sleep(1000)
+            reconnect(worlds,"")
+        end
+        clearSide(worlds)
+        sleep(200)
+        platform(worlds)
+        sleep(200)
+        clearDirt(worlds)
+        sleep(200)
+        clearLava(worlds)
+        sleep(200)
+        replaceLava(worlds)
+        sleep(200)
+        plantFirst(worlds)
+        sleep(200)
+        placeDirt(worlds)
+        sleep(200)
+        finish(worlds)
+        write(finishFileName,worlds)
+    end
+end
+
+-- reset
+
+local filed = io.open(foundFileName, "w")
+filed:close()
+
+sleep(1000)
+
+local files = io.open(finishFileName, "w")
+files:close()
+
+getBot():disconnect()

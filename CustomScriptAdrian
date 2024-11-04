@@ -1,0 +1,190 @@
+--[[
+    Script Type: Lucifer Custom Auto Transfer Script
+    Created By: Daike no shori
+]]
+
+local itemSeedID = ?
+local storageInput = "?.txt"
+local storageOutput = "?.txt"
+
+----------------- Dont Touch ------------------
+local indexSeed = 1
+local storageInputs = {}
+local storageOutputs = ""
+
+local function seperateString(str)
+    local world, id = str:match("([^|]+)|([^|]+)")
+    return {world = world, id = id}
+end
+
+local function logConsole(text)
+    print(tostring(text))
+end
+
+local function scanObject(itemID)
+    return getBot():getWorld().growscan():getObjects[itemID] or 0
+end
+
+local function getItemCount(itemID)
+    return getBot():getInventory():getItemCount(itemID)
+end
+
+local contentStorageInput = read("storageInput")
+
+if contentStorageInput then
+    for line in input:gmatch("[^\r\n]+") do
+        if line:find("|") then
+            table.insert(storageInputs, line)
+        end
+    end
+    logConsole("Successful get the input storage data world count: " .. #storageInputs)
+else
+    logConsole("Input file doesnt exist")
+    getBot():stopScript()
+end
+
+local contentStorageOutput = read("storageInput")
+
+if contentStorageOutput then
+    for line in input:gmatch("[^\r\n]+") do
+        if line:find("|") then
+            table.insert(storageOutputs, line)
+        end
+    end
+    logConsole("Successful get the output storage data world count: " .. #storageInputs)
+else
+    logConsole("Output file doesnt exist")
+    getBot():stopScript()
+end
+
+local function waitForCondition(interval, max, condition)
+    local sleepCounter = 0
+    while condition() and sleepCounter < max do
+        listenEvents(1)
+        sleepCounter = sleepCounter + interval
+    end
+    return sleepCounter
+end
+
+local function reconnect(world,x,y)
+
+end
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString()
+        if message:find("That world is inaccessible") then
+            nuked = true
+            unlistenEvents()
+        elseif message:find("Players lower than level") then
+            playerLimit = true
+            unlistenEvents()
+        end
+    end
+end)
+
+local function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        nuked = false
+        playerLimit = false
+        local attempt = 0
+        while not getBot():isInWorld(world:upper()) do
+            getBot():warp(world)
+            listenEvents(12)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(25000,35000))
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked and not playerLimit then
+                attempt = attempt + 1
+                if attempt >= 5 then
+                    getBot():disconnect()
+                    sleep(60000 * 4)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(math.random(10000,15000))
+                    end
+                    attempt = 0
+                end
+            end
+            if nuked then
+                return {success = false,nukes = true,playerLimits = false,wrongpass = false}
+            end
+            if playerLimit then
+                return {success = false,nukes = false,playerLimits = true,wrongpass = false}
+            end
+        end
+    end
+    local attempt = 0
+    if id ~= "" and getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+        while getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 do
+            getBot():warp(world,id)
+            sleep(2000)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(25000,35000))
+            end
+            if getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    return {success = false,nukes = false,playerLimits = false,wrongpass = true}
+                end
+            end
+        end
+    end
+    return {success = true,nukes = false,playerLimits = false,wrongpass = false}
+end
+
+local function takeSeed()
+    while getItemCount(itemSeedID) == 0 do
+        local seperate = seperateString(storageInputs[indexSeed])
+        local result = enterWorld(seperate.world,seperate.id)
+        if result.success == true then
+            if scanObject(itemSeedID) > 0 then
+                for _,object in pairs(getObjects()) do
+                    if object.id == itemSeedID then
+                        getBot():findPath(math.floor((object.x + 8) / 32),math.floor((object.y + 8) / 32))
+                        sleep(500)
+                        reconnect(storageSeed[indexSeed],storageDoorID,math.floor((object.x + 8) / 32),math.floor((object.y + 8) / 32))
+                        getBot():collectObject(object.oid,5)
+                        sleep(1000)
+                        reconnect(storageSeed[indexSeed],storageDoorID,math.floor((object.x + 8) / 32),math.floor((object.y + 8) / 32))
+                        if getItemCount(itemSeedID) > 0 then
+                            return
+                        end
+                    end
+                end
+            else
+                if indexSeed ~= #storageInputs then
+                    indexSeed = indexSeed + 1
+                else
+                    getBot():stopScript()
+                end
+            end
+        else
+            if indexSeed ~= #storageInputs then
+                indexSeed = indexSeed + 1
+            else
+                getBot():stopScript()
+            end
+        end
+    end
+end
+
+local function checkTile(x,y,num)
+    local count = 0
+    for _,object in pairs(getObjects()) do
+        if math.floor((object.x + 8) / 32) == x and math.floor((object.y + 8) / 32) == y then
+            count = count + object.count
+        end
+    end
+    if count <= (3800 - num) then
+        return true
+    end
+    return false
+end
+
+local function storeSeed(world,id)
+
+end
+

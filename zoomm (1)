@@ -1,0 +1,183 @@
+local info = {}
+
+info[3] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+}
+
+info[4] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+}
+
+info[5] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+}
+
+info[6] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+}
+
+info[7] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+}
+
+info[8] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+}
+
+info[9] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+}
+
+info[10] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+}
+
+local function seperateString(str)
+    local growid, password = str:match("([^|]+)|([^|]+)")
+    return {name = growid, pass = password}
+end
+
+local function generateWorld()
+    local name = ""
+    for i = 1, 8 do
+        name = name .. string.char(math.random(97,122))
+    end
+    return string.upper(name)
+end
+
+while true do
+    for _,bot in pairs(info[getBot().index]) do
+        local credit = seperateString(bot)
+        local stopt = false
+        getBot():updateBot(generateWorld(),"",credit.name,credit.pass,Platform.macos)
+        sleep(10000)
+        while getBot().status ~= 1 do
+            getBot():connect()
+            sleep(10000)
+            if getBot().status == 20 then
+                stopt = true
+                break
+            end
+        end
+        if stopt == false then
+            while not getBot():isInWorld("ZOMBIESJIN") do
+                getBot():warp("ZOMBIESJIN")
+                sleep(8000)
+            end
+            while getLocal().avatarFlags < 63356 do
+                while getTile(getBot().x,getBot().y).fg == 6 do
+                    getBot():moveRight()
+                    sleep(500)
+                end
+                while getBot().x ~= 12 or getBot().y ~= 23 do
+                    getBot():findPath(12,23)
+                    sleep(500)
+                    while getTile(getBot().x,getBot().y).fg == 6 do
+                        getBot():moveRight()
+                        sleep(500)
+                    end
+                end
+                if getBot().status ~= 1 then
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(12000)
+                    end
+                end
+                sleep(500)
+            end
+            while getLocal().avatarFlags >= 63356 do
+                while getTile(getBot().x,getBot().y).fg == 6 do
+                    getBot():moveRight()
+                    sleep(500)
+                end
+                while getBot().x ~= 18 or getBot().y ~= 23 do
+                    getBot():findPath(18,23)
+                    sleep(500)
+                    while getTile(getBot().x,getBot().y).fg == 6 do
+                        getBot():moveRight()
+                        sleep(500)
+                    end
+                end
+                if getBot().status ~= 1 then
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(12000)
+                    end
+                end
+                sleep(500)
+            end
+        end
+    end
+end

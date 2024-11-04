@@ -1,0 +1,208 @@
+local world_farm = "C:\\Users\\Administrator\\Desktop\\docs\\farm.txt" -- farm list format is WORLD only no need door 
+
+
+local take_npg = false
+local world_npg = ""
+local door_npg = ""
+
+-- variable 
+local bot = getBot()
+local nuked = false
+-- body 
+
+addEvent(Event.variantlist, function(var, netid)
+    if var:get(0):getString() == "OnConsoleMessage" then
+        if var:get(1):getString() == "That world is inaccessible."then
+            nuked = true
+            unlistenEvents()
+        end
+    end
+end)
+
+local function warp(world, id)
+    world = world:upper()
+    id = id or ''
+    nuked = false
+
+    if not bot:isInWorld(world:upper()) then
+        while not bot:isInWorld(world:upper()) and not nuked do
+            bot:warp(id == '' and world or world .. ('|' .. id))
+            listenEvents(4)
+            sleep(6000)
+        end
+    end
+end
+
+local function getItemCount(id)
+    return bot:getInventory():getItemCount(id)
+end
+
+local function wear(id)
+    if bot:isInWorld() then
+        while getItemCount(id) >= 1 and not bot:getInventory():getItem(id).isActive do
+            bot:wear(id)
+            sleep(500)
+        end
+    end
+end
+
+local function isCanfindPath(x, y)
+    return (#bot:getPath(x, y) == 0 and bot:isInTile(x, y)) or
+        (#bot:getPath(x, y) ~= 0 and not bot:isInTile(x, y))
+end
+
+local function reconnect(world, id, x, y)
+    if bot.status ~= 1 then
+        local sended = false
+        while bot.status ~= 1 or bot:getPing() == 0 do
+            sleep(5000)
+            if bot.status == 3 then
+                print(bot.name .. ' Bot is banned from the game')
+            end
+        end
+        sleep(5000)
+    end
+
+    if bot.status == 1 then
+        if world and not bot:isInWorld() then
+            warp(world, id)
+            if x and y then
+                while isCanfindPath(x, y) and not bot:isInTile(x, y) do
+                    bot:findPath(x, y)
+                    sleep(100)
+                end
+            end
+        end
+    end
+end
+
+local function clear()
+    for _, npc in pairs(bot:getWorld():getNPCs()) do
+        local pkt = GameUpdatePacket.new()
+        pkt.type = 34
+        pkt.count1 = npc.id
+        pkt.count2 = 8
+        pkt.pos_x = npc.x
+        pkt.pos_y = npc.y
+        pkt.pos2_x = bot:getWorld():getLocal().posx
+        pkt.pos2_y = bot:getWorld():getLocal().posy
+        bot:sendRaw(pkt)
+        sleep(500)
+    end
+end
+
+local function excessing(id, item_to_carry)
+    local excess = getItemCount(id) - item_to_carry
+    if excess > 0 and bot:isInWorld() then
+        while excess > 0 and bot:isInWorld() do
+            bot:moveRight()
+            sleep(500)
+            bot:setDirection(true)
+            sleep(500)
+            bot:drop(id, excess)
+            sleep(500)
+            excess = getItemCount(id) - item_to_carry
+            if excess > 0 then
+                sleep(1000)
+            end
+        end
+    end
+end
+
+local function take_clothes()
+    local world = world_npg
+    local door  = door_npg
+
+    local ayti  = { 6086 }
+    warp(world, door)
+
+    if bot:isInWorld(world:upper()) then
+        for _, item in pairs(ayti) do
+            while getItemCount(item) ~= 1 do
+                for _, obj in pairs(bot:getWorld():getObjects()) do
+                    if obj.id == item then
+                        while not bot:isInTile(math.floor(obj.x) / 32, math.floor(obj.y) / 32) and isCanfindPath(math.floor(obj.x) / 32, math.floor(obj.y) / 32) do
+                            bot:findPath(math.floor(obj.x) / 32, math.floor(obj.y) / 32)
+                            sleep(300)
+                            reconnect(world, door)
+                        end
+                        bot:collectObject(obj.oid, 7)
+                    end
+                end
+                excessing(item, 1)
+                reconnect(world, door)
+            end
+        end
+    end
+end
+
+local function load_world(world)
+    local file = io.open(world, "r")
+    local world_list = {}
+    if file then
+        for line in file:lines() do
+            if line ~= "" then
+                table.insert(world_list, line)
+            end
+        end
+        file:close()
+    else
+        print("File not found.")
+    end
+    return world_list
+end
+
+local function spread_worlds(world_list, total_bots)
+    local bot_worlds = {}
+    local worlds_per_bot = math.floor(#world_list / total_bots)
+    local remainder = #world_list % total_bots
+    local added_worlds = {}
+
+    for i = 1, total_bots do
+        bot_worlds[i] = {}
+        local start_index = ((i - 1) * worlds_per_bot) + 1
+        local end_index = i * worlds_per_bot
+
+        if i == total_bots then
+            end_index = end_index + remainder
+        end
+
+        for j = start_index, end_index do
+            local world = (world_list[j])
+
+            if world and not added_worlds[world] then
+                table.insert(bot_worlds[i], { world = world })
+                added_worlds[world] = true
+            end
+        end
+    end
+    return bot_worlds
+end
+
+local world_ghost = spread_worlds(load_world(world_farm), #getBots())
+
+if take_npg == true then
+    take_clothes()
+    wear(6086)
+end
+
+while true do
+
+    for bot_index, world_list in pairs(world_ghost) do
+        for _, world_data in ipairs(world_list) do
+            if bot_index == bot.index then
+
+                local world = world_data.world
+
+                warp(world,'')
+
+                if not nuked then 
+                    if bot:isInWorld(world:upper()) then
+                        clear()
+                    end
+                end
+            end
+        end
+    end
+    sleep(1000)
+end

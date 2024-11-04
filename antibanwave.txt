@@ -1,0 +1,662 @@
+MULTIBOT = {} -- Don't touch it
+
+MULTIBOT["ASPECTNOTSCARED"] = {
+    worldBreak = {"CRAWLCLEAR"},
+    worldBreakID = "",
+    reserveGrowID = {},
+    reservePassword = "",
+    sendInfoWebhook = false,
+    webhookLinkUrlInfo = "",
+    webhookUrlMessageID = ""
+}
+
+MULTIBOT["BOTNAME2"] = {
+    worldBreak = {""},
+    worldBreakID = "",
+    reserveGrowID = {},
+    reservePassword = "",
+    sendInfoWebhook = false,
+    webhookLinkUrlInfo = "",
+    webhookUrlMessageID = ""
+}
+
+-- [WEBHOOK:SETTING>]
+webhookOffline = "https://discord.com/api/webhooks/1189031469885169664/29KGw--5fZLZ1Iq_pQchFBYsS0FjVGTStw4YS4_yGGJjlfn4Y224RgB8Bn1XO-3XfJSu"
+
+-- [<FARMABLE:SETTING>]
+worldFarmList = "rentrylink"
+
+-- [<GENERAL:SETTING>]
+itemSeedID = 3
+itemBlockID = 2
+
+-- [PICKAXE:SETTING]
+autoTakePick = false
+worldTakePick = "CRAWLSTORE1"
+worldPickDoorID = "SIGMA"
+
+-- [<PURCHASE:SETTING>]
+profitPerPack = 1
+purchaseDebug = "world_lock"
+purchasePrice = 2000
+purchaseItemID = {109,13,1113}
+
+-- [<STORAGEPACK:SETTING>]
+storagePack = "CRAWLSTORE1"
+storageDoorID = "SIGMA"
+backgroundPack = 20
+
+-- [<STORAGESEED:SETTING>]
+worldSaveSeed = {}
+worldSeedDoorID = ""
+backgroundSeed = 20
+
+-- [<TRASH:SETTING>]
+trashItemList = {}
+
+itemProfit = {
+    {itemID = 242,name = "World Lock",emote = ""},
+    {itemID = 242,name = "World Lock",emote = ""},
+    {itemID = 242,name = "World Lock",emote = ""}
+}
+
+------------------ Dont Touch ------------------
+bot = getBot()
+world = getBot():getWorld()
+inventory = getBot():getInventory()
+------------------------------------------------
+worldBreak = MULTIBOT[getBot().name:upper()].worldBreak
+worldBreakID = MULTIBOT[getBot().name:upper()].worldBreakID
+reserveGrowID = MULTIBOT[getBot().name:upper()].reserveGrowID
+reservePassword = MULTIBOT[getBot().name:upper()].reservePassword
+sendInfoWebhook = MULTIBOT[getBot().name:upper()].sendInfoWebhook
+webhookLinkUrlInfo = MULTIBOT[getBot().name:upper()].webhookLinkUrlInfo
+webhookUrlMessageID = MULTIBOT[getBot().name:upper()].webhookUrlMessageID
+------------------------------------------------
+indexPlace = 1
+indexBreak = 1
+getBot().legit_mode = true
+getBot().move_range = 2
+getBot().move_interval = 240
+getBot().collect_range = 3
+getBot().auto_reconnect = false
+
+function getBotStatus()
+    local status = getBot().status
+    local status_wrapper = {
+        [BotStatus.offline] = "Offline",
+        [BotStatus.online] = "Online",
+        [BotStatus.account_banned] = "Banned",
+        [BotStatus.location_banned] = "Location Banned",
+        [BotStatus.server_overload] = "Login Failed",
+        [BotStatus.too_many_login] = "Login Failed",
+        [BotStatus.maintenance] = "Maintenance",
+        [BotStatus.version_update] = "Version Update",
+        [BotStatus.server_busy] = "Server Bust",
+        [BotStatus.error_connecting] = "Error Connecting",
+        [BotStatus.logon_fail] = "Login Failed",
+        [BotStatus.http_block] = "HTTP Blocked",
+        [BotStatus.wrong_password] = "Wrong Password",
+        [BotStatus.advanced_account_protection] = "Advanced Account Protection",
+        [BotStatus.bad_name_length] = "Bad Name Length",
+        [BotStatus.invalid_account] = "Invalid Account",
+        [BotStatus.guest_limit] = "Guest Limit",
+        [BotStatus.changing_subserver] = "Changing Subserver",
+        [BotStatus.captcha_requested] = "Captcha",
+        [BotStatus.mod_entered] = "Mod Entered",
+        [BotStatus.high_load] = "High Load"
+    }
+    return status_wrapper[status] or "Unknown"
+end
+
+function getBotIndex()
+    for index,bot in pairs(getBots()) do
+        if string.upper(bot.name) == string.upper(getBot().name) then
+            return index
+        end
+    end
+end
+
+function infoStatus()
+    info = Webhook.new(webhookOffline)
+    info.username = "ATLAS ROTATION"
+    info.content = getBot().name .. "(index-" .. getBotIndex() .. ") status is "  .. getBotStatus() .. " @everyone"
+    info:send()
+end
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString()
+        if message:find("created too many worlds") or message:find("That world is inaccessible") or message:find("Players lower than level") then
+            nuked = true
+        end
+    end
+end)
+
+function reconnect(world,id,x,y)
+    if getBot().status ~= BotStatus.online then
+        infoStatus()
+        sleep(1000)
+        local attempt = 0
+        while getBot().status ~= BotStatus.online do
+            getBot():connect()
+            sleep(10000)
+            if getBot().status ~= BotStatus.online then
+                if getBot().status == 3 or getBot().status == 4 then
+                    infoStatus()
+                    sleep(1000)
+                    removeBot()
+                elseif getBot().status == BotStatus.error_connecting then
+                    infoStatus()
+                    sleep(1000)
+                    removeBot()
+                elseif getBot().status == BotStatus.offline then
+                    attempt = attempt + 1
+                    if attempt >= 3 then
+                        removeBot()
+                    end
+                end
+            end
+        end
+        while getBot():isInWorld() do
+            getBot():leaveWorld()
+            sleep(5000)
+        end
+        enterWorld(world,id)
+        sleep(1000)
+        while not getBot():isInTile(x,y) do
+            getBot():findPath(x,y)
+            sleep(1000)
+        end
+        sleep(2000)
+    end
+end
+
+function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        if getBot():isInWorld() then
+            while getBot():isInWorld() do
+                getBot():leaveWorld()
+                sleep(math.random(4000,5500))
+            end
+        end
+        local attempt = 0
+        while not getBot():isInWorld(world:upper()..(id and "|"..id or "")) do
+            getBot():warp(world:upper(),(id or ""))
+            listenEvents(sleep(math.random(4,7)))
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(6000)
+                if getBot().status ~= 1 then
+                    sleep(100000)
+                end
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    getBot().auto_reconnect = false
+                    getBot():disconnect()
+                    sleep(60000 * 20)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(6000)
+                        if getBot().status ~= 1 then
+                            sleep(100000)
+                        end
+                    end
+                    attempt = 0
+                end
+            else
+                if nuked then
+                    return
+                end
+            end
+        end
+        nuked = false
+        return
+    end
+end
+
+function checkSolid(x,y)
+    item = world:getTile(x,y).fg
+    if getInfo(item).collision_type == 1 then
+       return false
+    end
+    return true
+end
+
+function checkTile(x, y, num)
+    local count = 0
+    for _, obj in pairs(getBot():getWorld():getObjects()) do
+        if math.floor((obj.x + 10) / 32) == x and math.floor(obj.y / 32) == y then
+            count = count + obj.count
+        end
+    end
+    if count <= (4000 - num) then
+        return true
+    end
+    return false
+end
+
+function storeSeed(worlds,id)
+    enterWorld(worldSaveSeed,worldSeedDoorID)
+    sleep(math.random(500,1000))
+    for _,tile in pairs(world:getTiles()) do
+        if tile.fg == backgroundSeed or tile.bg == backgroundSeed then
+            for tiley = tile.y, 0, -1 do
+                for tilex = tile.x, 99, 1 do
+                    if checkTile(tilex,tiley,inventory:getItemCount(itemSeedID)) then
+                        if checkSolid(tilex,tiley) and checkSolid(tilex-1,tiley) then
+                            while not bot:isInTile(tilex-1,tiley) do
+                                bot:findPath(tilex-1,tiley)
+                                sleep(math.random(800,1500))
+                                bot:setDirection(false)
+                                sleep(1000)
+                            end
+                            while inventory:getItemCount(itemSeedID) > 0 do
+                                bot:drop(itemSeedID,inventory:getItemCount(itemSeedID))
+                                sleep(math.random(2500,3500))
+                            end
+                            sleep(math.random(800,1500))
+                        end
+                    end
+                    if inventory:getItemCount(itemSeedID) == 0 then
+                        break
+                    end
+                end
+                if inventory:getItemCount(itemSeedID) == 0 then
+                    break
+                end
+            end
+            if inventory:getItemCount(itemSeedID) == 0 then
+                break
+            end
+        end
+    end
+    enterWorld(worlds,id)
+    sleep(math.random(500,1000))
+end
+
+function storePack(worlds,id)
+    enterWorld(storagePack,storageDoorID)
+    sleep(math.random(500,1000))
+    for _,tile in pairs(world:getTiles()) do
+        if tile.fg == backgroundPack or tile.bg == backgroundPack then
+            for _,item in pairs(purchaseItemID) do
+                for tiley = tile.y, 0, -1 do
+                    for tilex = tile.x, 99, 1 do
+                        if checkTile(tilex,tiley,inventory:getItemCount(item)) then
+                            if checkSolid(tilex,tiley) and checkSolid(tilex-1,tiley) then
+                                while not bot:isInTile(tilex-1,tiley) do
+                                    bot:findPath(tilex-1,tiley)
+                                    sleep(math.random(800,1500))
+                                    bot:setDirection(false)
+                                    sleep(1000)
+                                end
+                                while inventory:getItemCount(item) > 0 do
+                                    bot:drop(item,inventory:getItemCount(item))
+                                    sleep(math.random(2500,3500))
+                                end
+                                sleep(math.random(500,1200))
+                            end
+                        end
+                        if inventory:getItemCount(item) == 0 then
+                            break
+                        end
+                    end
+                    if inventory:getItemCount(item) == 0 then
+                        break
+                    end
+                end
+            end
+        end
+    end
+    enterWorld(worlds,id)
+    sleep(math.random(500,1000))
+end
+
+function clearInventory()
+    for _,item in pairs(trashItemList) do
+        if inventory:getItemCount(item) > 0 then
+            bot:trash(item,inventory:getItemCount(item))
+            sleep(math.random(1500,2700))
+        end
+    end
+end
+
+function storeBuy()
+    print("coming soon")
+end
+
+if autoTakePick == true and inventory:getItemCount(98) == 0 then
+    enterWorld(worldTakePick,worldPickDoorID)
+    sleep(math.random(500,1000))
+    if (world.growscan:getObjects()[98] or 0) > 0 then
+        while inventory:getItemCount(98) == 0 do
+            for _,obj in pairs(world:getObjects()) do
+                if obj.id == 98 then
+                    bot:findPath(math.floor((obj.x + 10) / 32),math.floor(obj.y / 32))
+                    sleep(math.random(800,1500))
+                    bot:collectObject(obj.oid,3)
+                    sleep(math.random(700,1500))
+                    if inventory:getItemCount(98) > 0 then
+                        break
+                    end
+                end
+            end
+            sleep(1000)
+        end
+        botVertex = getBot().x
+        botHorizon = getBot().y
+        while not bot:isInTile(botVertex-1,botHorizon) do
+            bot:findPath(botVertex-1,botHorizon)
+            sleep(math.random(800,1500))
+            bot:setDirection(false)
+            sleep(1000)
+        end
+        while inventory:getItemCount(98) > 1 do
+            bot:drop(98,inventory:getItemCount(98)-1)
+            sleep(math.random(2500,3500))
+        end
+        while not inventory:getItem(98).isActive do
+            bot:wear(98)
+            sleep(math.random(2500,3500))
+        end
+    end
+end
+
+function takeSeed()
+    print("coming soon")
+end
+
+function findTiles()
+    local tile = {}
+    for _,tiles in pairs(world:getTiles()) do
+        if tiles.fg == 6 then
+            if tiles.x > 50 then
+                a,b,c = 98, 3, -5
+                d,e,f = 3, 98, 5
+            else
+                a,b,c = 3, 98, 5
+                d,e,f = 98, 3, -5
+            end
+        end
+    end
+    for tiley = 23, 1, -4 do
+        for tilex = a, b, c do
+            table.insert(tile, {x = tilex, y = tiley})
+        end
+        for tilex = d, e, f do
+            table.insert(tile, {x = tilex, y = tiley - 2})
+        end
+    end
+    for tiley = 25, 51, 4 do
+        for tilex = a, b, c do
+            table.insert(tile, {x = tilex, y = tiley})
+        end
+        for tilex = d, e, f do
+            table.insert(tile, {x = tilex, y = tiley + 2})
+        end
+    end
+    if a == 98 then
+        for tilex = 97, 2, -5 do
+            table.insert(tile, {x = tilex, y = 53})
+        end
+    else
+        for tilex = 2, 97, 5 do
+            table.insert(tile, {x = tilex, y = 53})
+        end
+    end
+    return tile
+end
+
+function isPlantable(x,y)
+    if x < 100 then
+        if world:getTile(x,y+1).fg > 0 then
+            local tile = world:getTile(x,y+1).fg
+            if getInfo(tile).collision_type == 1 or getInfo(tile).collision_type == 2 then
+                return true
+            end
+            return false
+        end
+    end
+end
+
+function checkEmpty(x,y)
+    for i = 1, 5 do
+        if world:getTile((x-3)+i,y).fg == 0 and isPlantable((x-3)+i,y) and world:hasAccess((x-3)+i,y) > 0 and #bot:getPath((x-3)+i,y) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+function plant(worlds,id)
+    for _,tile in pairs(findTiles()) do
+        if checkEmpty(tile.x,tile.y) then
+            if #bot:getPath(tile.x,tile.y) > 0 then
+                pathCount = #bot:getPath(tile.x,tile.y)
+                getBot():findPath(tile.x,tile.y)
+                if pathCount > 6 then
+                    sleep(1000)
+                end
+                for i = 1, 5 do
+                    if getBot().status == 1 and inventory:getItemCount(itemSeedID) == 0 then
+                        takeSeed()
+                        sleep(1000)
+                    end
+                    if isPlantable((tile.x-3)+i,tile.y) and world:getTile((tile.x-3)+i,tile.y).fg == 0 and world:hasAccess((tile.x-3)+i,tile.y) > 0 then
+                        reconnect(worlds,id,tilex,tiley)
+                        while world:getTile((tile.x-3)+i,tile.y).fg == 0 do
+                            bot:place((tile.x-3)+i,tile.y,itemSeedID)
+                            sleep(200)
+                            reconnect(worlds,id,tile.x,tile.y)
+                        end
+                    end
+                end
+            else
+                for i = 1, 5 do
+                    if bot:getPath((tile.x-3)+i,tile.y) > 0 then
+                        if isPlantable((tile.x-3)+i,tile.y) and world:getTile((tile.x-3)+i,tile.y).fg == 0 and world:hasAccess((tile.x-3)+i,tile.y) > 0 then
+                            if getBot().status == 1 and inventory:getItemCount(itemSeedID) == 0 then
+                                takeSeed()
+                                sleep(1000)
+                            end
+                            pathCount = #bot:getPath((tile.x-3)+i,tile.y)
+                            getBot():findPath((tile.x-3)+i,tile.y)
+                            if pathCount > 6 then
+                                sleep(1000)
+                            end
+                            reconnect(worlds,id,tile.x,tile.y)
+                            while world:getTile((tile.x-3)+i,tile.y).fg == 0 do
+                                bot:place((tile.x-3)+i,tile.y,itemSeedID)
+                                sleep(200)
+                                reconnect(worlds,id,tile.x,tile.y)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if inventory:getItemCount(itemSeedID) == 0 then
+            break
+        end
+    end
+end
+
+function checkHarvest(x,y)
+    for i = 1, 5 do
+        if world:getTile((x-3)+i,y).fg == itemSeedID and world:getTile((x-3)+i,y):canHarvest() and world:hasAccess((x-3)+i,y) > 0 and #bot:getPath((x-3)+i,y) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+function findTile()
+    local tile = {}
+    for _,tiles in pairs(world:getTiles()) do
+        if tiles.fg == 6 then
+            if tiles.x > 50 then
+                g,h,i = 98, 3, -5
+                j,k,l = 3, 98, 5
+            else
+                g,h,i = 3, 98, 5
+                j,k,l = 98, 3, -5
+            end
+        end
+    end
+    for tiley = 35, 0, -2 do
+        for tilex = g, h, i do
+            table.insert(tile, {x = tilex, y = tiley})
+        end
+        for tilex = j, k, l do
+            table.insert(tile, {x = tilex, y = tiley - 1})
+        end
+    end
+    return tile
+end
+
+function checkBlock(x,y)
+    for i = 1, 5 do
+       if world:getTile((x-3)+i,y).fg == 0 then
+            return true
+        end
+    end
+    return false
+end
+
+function placeBlock(worlds,id,x,y)
+    enterWorld(worldBreak[indexPlace],worldBreakID)
+    sleep(1000)
+    for _,tile in pairs(findTile()) do
+        if (world.growscan:getTiles()[itemBlockID] or 0) < 3400 then
+            if checkBlock(tile.x,tile.y) then
+                pathCount = #bot:getPath(tile.x,tile.y)
+                getBot():findPath(tile.x,tile.y-1)
+                if pathCount > 6 then
+                    sleep(1000)
+                end
+                for i = 1, 5 do
+                    if getBot().status == 1 and inventory:getItemCount(itemBlockID) == 0 then
+                        enterWorld(worlds,id)
+                        sleep(1000)
+                        while not getBot():isInTile(x,y) do
+                            getBot():findPath(x,y)
+                            sleep(1000)
+                        end
+                        return true
+                    end
+                    if world:getTile((tile.x-3)+i,tile.y).fg == 0 then
+                        reconnect(worlds,id,tile.x,tile.y)
+                        while world:getTile((tile.x-3)+i,tile.y).fg == 0 do
+                            bot:place((tile.x-3)+i,tile.y,itemBlockID)
+                            sleep(200)
+                            reconnect(worlds,id,tile.x,tile.y)
+                        end
+                    end
+                end
+            end
+        else
+            indexPlace = indexPlace + 1
+            return placeBlock(worlds,id)
+        end
+    end
+end
+
+function checkBlocks(x,y)
+    for i = 1, 5 do
+       if world:getTile((x-3)+i,y).fg == itemBlockID then
+            return true
+        end
+    end
+    return false
+end
+
+function breakBlock()
+    enterWorld(worldBreak[indexBreak],worldBreakID)
+    sleep(1000)
+    for i = 1, 2 do
+        for _,tile in pairs(findTile()) do
+            if checkBlocks(tile.x,tile.y) then
+                pathCount = #bot:getPath(tile.x,tile.y)
+                getBot():findPath(tile.x,tile.y-1)
+                if pathCount > 6 then
+                    sleep(1000)
+                end
+                for i = 1, 5 do
+                    if world:getTile((tile.x-3)+i,tile.y).fg ~= 0 then
+                        reconnect(worlds,id,tile.x,tile.y)
+                        while world:getTile((tile.x-3)+i,tile.y).fg ~= 0 do
+                            bot:hit((tile.x-3)+i,tile.y)
+                            sleep(200)
+                            reconnect(worlds,id,tile.x,tile.y)
+                        end
+                    end
+                end
+            end
+        end
+        indexBreak = indexBreak + 1
+        return breakBlock()
+    end
+end
+
+function harvest(worlds,id)
+    for _,tile in pairs(findTiles()) do
+        if checkHarvest(tile.x,tile.y) then
+            if #bot:getPath(tile.x,tile.y) > 0 then
+                pathCount = #bot:getPath(tile.x,tile.y)
+                getBot():findPath(tile.x,tile.y)
+                if pathCount > 6 then
+                    sleep(1000)
+                end
+                for i = 1, 5 do
+                    if inventory:getItemCount(itemBlockID) >= 190 then
+                        placeBlock(worlds,id,tile.x,tile.y)
+                        sleep(1000)
+                    end
+                    reconnect(worlds,id,tile.x,tile.y)
+                    if world:hasAccess((tile.x-3)+i,tile.y) > 0 then
+                        while world:getTile((tile.x-3)+i,tile.y).fg == itemSeedID do
+                            bot:hit((tile.x-3)+i,tile.y)
+                            sleep(200)
+                            reconnect(worlds,id,tile.x,tile.y)
+                        end
+                    end
+                end
+                getBot():collect(3,150)
+                sleep(50)
+            else
+                for i = 1, 5 do
+                    if inventory:getItemCount(itemBlockID) >= 190 then
+                        placeBlock(worlds,id,tile.x,tile.y)
+                        sleep(1000)
+                    end
+                    if bot:getPath((tile.x-3)+i,tile.y) > 0 then
+                        if world:getTile(tile.x,tile.y).fg == itemSeedID and world:getTile((tile.x-3)+i,tile.y):canHarvest() and world:hasAccess((tile.x-3)+i,tile.y) > 0 then
+                            pathCount = #bot:getPath((tile.x-3)+i,tile.y)
+                            getBot():findPath((tile.x-3)+i,tile.y)
+                            if pathCount > 6 then
+                                sleep(1000)
+                            end
+                            reconnect(worlds,id,tile.x,tile.y)
+                            while world:getTile((tile.x-3)+i,tile.y).fg == itemSeedID do
+                                bot:hit((tile.x-3)+i,tile.y)
+                                sleep(200)
+                                reconnect(worlds,id,tile.x,tile.y)
+                            end
+                            getBot():collect(3,150)
+                            sleep(50)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if inventory:getItemCount(itemSeedID) >= 190 then
+        placeBlock()
+        sleep(1000)
+    end
+end
+
+plant("RJEQL","CRAWL")

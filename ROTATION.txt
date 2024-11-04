@@ -1,0 +1,292 @@
+-- ================== [[ STORAGE SETTING ]] ================== --
+local storageSeedList = {}
+local storageSeedDoorID = ""
+local maxSeedPerWorld = 10000
+
+-- ================== [[ DELAY SETTING ]] ================== --
+local delayBotPlant = "MEDIUM"
+local delayBotBreak = "LOW"
+local delayBotPlace = "ULTRA"
+local delayBotHarvest = "MEDIUM"
+local restCooldownHardWarp = 10
+
+-- ================== [[ OTHER SETTING ]] ================== --
+local autoTakePick = false
+local storagePickaxe = ""
+local storagePickDoorID = ""
+
+----------------- PRIVATE SOURCE 300DLS -----------------
+local nukedWorldList = {}
+local storageSeedIndex = 1
+local storageTakeIndex = 1
+
+function autoDetect()
+    local item = {}
+    for _,tile in pairs(getBot():getWorld():getTiles()) do
+        if tile.fg % 2 ~= 0 then
+            if item[tile.fg] then
+                item[tile.fg].count = item[tile.fg].count + 1
+            else
+                item[tile.fg] = {count = 1, farmable = tile.fg}
+            end
+        end
+    end
+    for _,item in pairs(item) do
+        if item.count >= 200 then
+            itemSeedID = item.farmable
+            itemBlockID = item.farmable - 1
+        end
+    end
+end
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString()
+        if message:find("That world is inaccessible") then
+            nuked = true
+            unlistenEvents()
+        elseif message:find("Players lower than level") then
+            playerLimit = true
+            unlistenEvents()
+        end
+    end
+end)
+
+local function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        nuked = false
+        playerLimit = false
+        local attempt = 0
+        while not getBot():isInWorld(world:upper()) do
+            getBot():warp(world)
+            listenEvents(5)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(10000,15000))
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked and not playerLimit then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    getBot():disconnect()
+                    sleep(60000 * potato)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(math.random(10000,15000))
+                    end
+                    attempt = 0
+                end
+            end
+            if nuked then
+                return {success = false,nukes = true,playerLimits = false,wrongpass = false}
+            end
+            if playerLimit then
+                return {success = false,nukes = false,playerLimits = true,wrongpass = false}
+            end
+        end
+    end
+    local attempt = 0
+    if id ~= "" and getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+        while getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 do
+            getBot():warp(world,id)
+            sleep(2500)
+            if getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    return {success = false,nukes = false,playerLimits = false,wrongpass = true}
+                end
+            end
+        end
+    end
+    return {success = true,nukes = false,playerLimits = false,wrongpass = false}
+end
+
+local function canFindPath(x,y)
+    return (x == getBot().x and y == getBot().y and true or #getBot():getPath(x,y) > 0 and true or false)
+end
+
+local function changeMoveSetting(range,interval)
+    getBot().move_range = range
+    getBot().move_interval = interval
+end
+
+local function worldInfo(link,world,event,class)
+    local webhook = Webhook.new(link)
+    webhook.username = "Crawl Script"
+    webhook.avatar_url = ""
+    webhook.content = "**[ " .. getBot().index .. ". " .. getBot().name:upper() .. " ]** world " .. class .. " ".. world:upper() .. " " .. event
+    webhook:send()
+end
+
+local function checkTile(x,y,num)
+    local count = 0
+    for _,object in pairs(getObjects()) do
+        if math.floor((object.x + 10) / 32) == x and math.floor((object.y + 10) / 32) == y then
+            count = count + object.count
+        end
+    end
+    if count <= (4000 - num) then
+        return true
+    end
+    return false
+end
+
+local function storeSeed()
+    if nukedWorldList[storageSeedList[storageSeedIndex]] then if storageSeedIndex ~= #storageSeedList then storageSeedIndex = storageSeedIndex + 1 return storeSeed() else print("[" .. getBot().name .. "] Please provide enough storage world then re-execute the script") getBot():stopScript() end end
+    local result = enterWorld(storageSeedList[storageSeedIndex],storageSeedDoorID)
+    sleep(200)
+    if result.success == true then
+        local countObject = (getBot():getWorld().growscan:getObjects()[itemSeedID] or 0)
+        if countObject < maxSeedPerWorld then
+            local tileposx, tileposy = getBot().x, getBot().y
+            for tiley = tileposy, 0, -1 do
+                for tilex = tileposx, (tileposx + 10), 1 do
+                    if getInfo(getBot():getWorld():getTile(tilex,tiley).fg).collision_type == 0 and canFindPath(tilex-1,tiley) then
+                        local tileDropable = checkTile(tilex,tiley,getBot():getInventory():getItemCount(itemSeedID))
+                        if tileDropable == true then
+                            while not getBot():isInTile(tilex-1,tiley) do
+                                getBot():findPath(tilex-1,tiley)
+                                sleep(500)
+                                getBot():setDirection(false)
+                                sleep(500)
+                            end
+                            while getBot():getInventory():getItemCount(itemSeedID) > 0 do
+                                getBot():drop(itemSeedID,getBot():getInventory():getItemCount(itemSeedID))
+                                sleep(3000)
+                            end
+                        end
+                    end
+                    if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                        break
+                    end
+                end
+                if getBot():getInventory():getItemCount(itemSeedID) == 0 then
+                    break
+                end
+            end
+        else
+            if storageSeedIndex ~= #storageSeedList then
+                storageSeedIndex = storageSeedIndex + 1
+                return storeSeed()
+            else
+                print("[" .. getInfo().user .. "] Please provide enough storage world then re-execute the script")
+                getBot():stopScript()
+            end
+        end
+    else
+        worldInfo("https://discord.com/api/webhooks/1220413920997543986/sPhNqvC6F3X8MZbPXUM47w0KM_QzZE4yb5dliKZ4nn2WuJwlV-a0_LcO5V74OP7g66MG",storageSeedList[storageSeedIndex],(result.nukes and "is nuked" or result.playerLimits and "has a player level limit" or result.wrongpass and "cannot join in the world"),"storage seed")
+        sleep(200)
+        nukedWorldList[storageSeedList[storageSeedIndex]] = "NUKED"
+        if storageSeedIndex ~= #storageSeedList then
+            storageSeedIndex = storageSeedIndex + 1
+            return storeSeed()
+        else
+            print("[" .. getBot().name .. "] Please provide enough storage world then re-execute the script")
+            getBot():stopScript()
+        end
+    end
+end
+
+function scanAvailableFloat(itemID)
+    local count = 0
+    for _,object in pairs(getObjects()) do
+        if object.id == itemID then
+            if canFindPath(math.floor((object.x + 8) / 32),math.floor((object.y + 8) / 32)) then
+                count = count + object.count
+            end
+        end
+    end
+    return count
+end
+
+local function takeSeedFromStorage()
+    if nukedWorldList[storageSeedList[storageTakeIndex]] then if storageTakeIndex ~= #storageSeedList then storageTakeIndex = storageTakeIndex + 1 return takeSeedFromStorage() else storageTakeIndex = 1 return end end
+    local result = enterWorld(storageSeedList[storageTakeIndex],storageSeedDoorID)
+    sleep(200)
+    if result.success == true then
+        local countObject = scanAvailableFloat(itemSeedID)
+        if countObject > 0 then
+            while getBot():getInventory():getItemCount(itemSeedID) == 0 do
+                local countObjects = scanAvailableFloat(itemSeedID)
+                if countObjects == 0 then storageTakeIndex = storageTakeIndex + 1 return takeSeedFromStorage() end
+                for _,object in pairs(getBot():getWorld():getObjects()) do
+                    if object.id == itemSeedID then
+                        getBot():findPath(math.floor((object.x + 8) / 32),math.floor((object.y + 8) / 32))
+                        sleep(500)
+                        getBot():collectObject(object.oid,3)
+                        sleep(500)
+                        if getBot():getInventory():getItemCount(itemSeedID) > 0 then
+                            break
+                        end
+                    end
+                end
+                sleep(1000)
+            end
+        else
+            if storageTakeIndex ~= #storageSeedList then
+                storageTakeIndex = storageTakeIndex + 1
+                return takeSeedFromStorage()
+            else
+                print("[" .. getInfo().user .. "] Please provide enough seed on storage then re-execute the script")
+                getBot():stopScript()
+            end
+        end
+    else
+        worldInfo("https://discord.com/api/webhooks/1220413920997543986/sPhNqvC6F3X8MZbPXUM47w0KM_QzZE4yb5dliKZ4nn2WuJwlV-a0_LcO5V74OP7g66MG",storageSeedList[storageSeedIndex],(result.nukes and "is nuked" or result.playerLimits and "has a player level limit" or result.wrongpass and "cannot join in the world"),"storage seed")
+        sleep(200)
+        nukedWorldList[storageSeedList[storageTakeIndex]] = "NUKED"
+        if storageTakeIndex ~= #storageSeedList then
+            storageTakeIndex = storageTakeIndex + 1
+            return takeSeedFromStorage()
+        else
+            storageTakeIndex = 1
+            return
+        end
+    end
+end
+
+function plant(world,id)
+    if delayBotPlant == "LOW" then
+        
+
+
+
+if autoTakePick == true and inventory:getItemCount(98) == 0 then
+    local result = enterWorld(storagePickaxe,storagePickDoorID)
+    sleep(math.random(200,400))
+    if result.success == true then
+        while inventory:getItemCount(98) == 0 do
+            for _,obj in pairs(world:getObjects()) do
+                if obj.id == 98 then
+                    getBot():findPath(math.floor((obj.x + 10) / 32)-1,math.floor(obj.y / 32))
+                    sleep(math.random(200,400))
+                    getBot():collectObject(obj.oid,3)
+                    sleep(math.random(400,500))
+                    if inventory:getItemCount(98) > 0 then
+                        break
+                    end
+                end
+            end
+            sleep(1000)
+        end
+        local ex = getBot().x
+        local ye = getBot().y
+        while not getBot():isInTile(ex-1,ye) do
+            getBot():findPath(ex-1,ye)
+            sleep(math.random(200,400))
+            getBot():setDirection(false)
+            sleep(500)
+        end
+        while inventory:getItemCount(98) > 1 do
+            getBot():drop(98,inventory:getItemCount(98)-1)
+            sleep(math.random(2500,3500))
+        end
+        while not inventory:getItem(98).isActive do
+            getBot():wear(98)
+            sleep(math.random(2500,3500))
+        end
+    else
+        worldInfo("https://discord.com/api/webhooks/1220413920997543986/sPhNqvC6F3X8MZbPXUM47w0KM_QzZE4yb5dliKZ4nn2WuJwlV-a0_LcO5V74OP7g66MG",storagePickaxe,(result.nukes and "is nuked" or result.playerLimits and "has a player level limit" or result.wrongpass and "cannot join in the world"),"storage pickaxe")
+        sleep(200)
+        getBot():stopScript()
+    end
+end

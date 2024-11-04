@@ -1,0 +1,200 @@
+botid = getLocal().netid
+local world = {}
+local fileName =  "JUAN_" .. getBot().name:upper()
+
+local function canFindPath(x,y)
+    return (x == getBot().x and y == getBot().y and true or #getBot():getPath(x,y) > 0 and true or false)
+end
+
+local function write(filename,text)
+    local file = io.open(filename, "a+")
+    file:write(text .. "\n")
+    file:close()
+end
+
+local function warpCondition()
+    local tableIndex = {}
+    local currentIndex = 0
+    local proxy = getBot():getProxy().ip
+    local joining = 0
+    local queueNumber = 0
+
+    for i, bot in pairs(getBots()) do
+        if bot:getProxy().ip == proxy then
+            table.insert(tableIndex, i)
+        end
+    end
+
+    if not getBot().custom_status:find("Joining") then
+        for _,index in pairs(tableIndex) do
+            if getBot(index).custom_status:find("Joining") then
+                joining = joining + 1
+            end
+        end
+
+        queueNumber = joining + 1
+        local modified_str = string.gsub(getBot().custom_status, "|([^|]+|%d+)$", "")
+        getBot().custom_status = modified_str .. "|Joining_" .. queueNumber .. "|0"
+
+    else
+        queueNumber = string.match(getBot().custom_status,"Joining_(%d+)|")
+    end
+
+    local lastWarped = 0
+    
+    for _,index in pairs(tableIndex) do
+        if getBot(index).custom_status:find("Joined") and getBot(index).name:lower() ~= getBot().name:lower() then
+            local time = tonumber(string.match(getBot(index).custom_status,"Joined|(%d+)"))
+            if time >= lastWarped then
+                lastWarped = time
+            end
+        end
+    end
+
+    if queueNumber == 1 then return true end
+
+    if os.time() < (lastWarped + 40) then return false end
+
+    for _,index in pairs(tableIndex) do
+        if getBot(index).custom_status:find("Joining_" .. (queueNumber-1)) then
+            return false
+        end
+    end
+
+    return true
+end
+
+addEvent(Event.variantlist, function(variant, netid)
+    if variant:get(0):getString() == "OnConsoleMessage" then
+        message = variant:get(1):getString()
+        if message:find("That world is inaccessible") then
+            nuked = true
+            unlistenEvents()
+        elseif message:find("Players lower than level") then
+            playerLimit = true
+            unlistenEvents()
+        end
+    end
+end)
+
+local function enterWorld(world,id)
+    if not getBot():isInWorld(world:upper()) then
+        nuked = false
+        playerLimit = false
+        local attempt = 0
+        while not warpCondition() do
+            sleep(2000)
+        end
+        while not getBot():isInWorld(world:upper()) do
+            getBot():warp(world)
+            listenEvents(10)
+            while getBot().status ~= 1 do
+                getBot():connect()
+                sleep(math.random(10000,15000))
+            end
+            if not getBot():isInWorld(world:upper()) and not nuked and not playerLimit then
+                attempt = attempt + 1
+                if attempt >= 5 then
+                    getBot():disconnect()
+                    sleep(60000 * 20)
+                    while getBot().status ~= 1 do
+                        getBot():connect()
+                        sleep(math.random(10000,15000))
+                    end
+                    attempt = 0
+                end
+            end
+            if nuked then
+                local modified_str = string.gsub(getBot().custom_status, "|([^|]+|%d+)$", "")
+                getBot().custom_status = modified_str .. "|Joined|" .. os.time()
+                return {success = false,nukes = true,playerLimits = false,wrongpass = false}
+            end
+            if playerLimit then
+                local modified_str = string.gsub(getBot().custom_status, "|([^|]+|%d+)$", "")
+                getBot().custom_status = modified_str .. "|Joined|" .. os.time()
+                return {success = false,nukes = false,playerLimits = true,wrongpass = false}
+            end
+        end
+    end
+    local attempt = 0
+    if id ~= "" and getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+        while getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 do
+            getBot():warp(world,id)
+            sleep(2000)
+            if getBot():getWorld():getTile(getBot().x,getBot().y).fg == 6 then
+                attempt = attempt + 1
+                if attempt >= 4 then
+                    local modified_str = string.gsub(getBot().custom_status, "|([^|]+|%d+)$", "")
+                    getBot().custom_status = modified_str .. "|Joined|" .. os.time()
+                    return {success = false,nukes = false,playerLimits = false,wrongpass = true}
+                end
+            end
+        end
+    end
+    local modified_str = string.gsub(getBot().custom_status, "|([^|]+|%d+)$", "")
+    getBot().custom_status = modified_str .. "|Joined|" .. os.time()
+    return {success = true,nukes = false,playerLimits = false,wrongpass = false}
+end
+
+function extract(varlist, netid)
+    if varlist:get(0):getString() == "OnDialogRequest" then
+        if varlist:get(1):getString():find("myWorldsUiTab") then
+            local dialogText = varlist:get(1):getString()
+            for worldName in dialogText:gmatch("add_button|([A-Z]+)|") do
+                table.insert(world,worldName)
+            end
+        end
+    end
+end
+
+addEvent(Event.variantlist,extract)
+getBot():sendPacket(2,"action|wrench\n|netid|"..botid)
+sleep(3000)
+getBot():sendPacket(2,"action|dialog_return\ndialog_name|popup\nnetID|"..botid.."|\nbuttonClicked|my_worlds")
+listenEvents(4)
+
+for _,worlds in pairs(world) do
+    enterWorld(worlds,"")
+    sleep(500)
+    if getBot():getWorld():getTile(97,2).fg ~= 2 then
+        while getBot():getWorld():getTile(getBot().x,getBot().y-1).fg > 0 do
+            getBot():hit(getBot().x,getBot().y-1)
+            sleep(200)
+        end
+    else
+        getBot().auto_collect = true
+        for _,obj in pairs(getObjects()) do
+            if canFindPath(math.floor((obj.x + 8) / 32),math.floor(obj.y / 32)) then
+                getBot():findPath(math.floor((obj.x + 8) / 32),math.floor(obj.y / 32))
+                sleep(1500)
+            enf
+        end
+        for _,obj in pairs(getObjects()) do
+            if obj.id == 4 or obj.id == 5 then
+                getBot():findPath(math.floor((obj.x + 8) / 32),math.floor(obj.y / 32)-1)
+                sleep(200)
+                while getBot():getWorld():getTile(getBot().x,getBot().y+1).fg > 0 do
+                    getBot():hit(getBot().x,getBot().y+1)
+                    sleep(200)
+                end
+                if getBot():getInventory():getItemCount(4) >= 190 or getBot():getInventory():getItemCount(5) >= 190 then
+                    while getBot():getInventory():getItemCount(4) >= 190 do
+                        getBot():trash(4,200)
+                        sleep(3000)
+                    end
+                    while getBot():getInventory():getItemCount(5) >= 190 do
+                        getBot():trash(5,200)
+                        sleep(3000)
+                    end
+                end
+                sleep(500)
+                while getBot():getWorld():getTile(getBot().x,getBot().y+1).fg == 0 do
+                    getBot():place(getBot().x,getBot().y+1,2)
+                    sleep(200)
+                end
+            end
+        end
+        getBot().auto_collect = false
+        write(fileName,worlds:upper())
+    end
+end
